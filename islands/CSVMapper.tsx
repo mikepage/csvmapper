@@ -1,6 +1,5 @@
 import { useSignal, useComputed, useSignalEffect } from "@preact/signals";
 import { detectAndDecodeText } from "../utils/encoding.ts";
-import { formatDateAutoDetect, transformDate } from "../utils/date.ts";
 import {
   detectDelimiter,
   DELIMITERS,
@@ -11,8 +10,6 @@ import {
 import {
   exportMappingConfig,
   serializeMappingConfig,
-  parseNumber,
-  formatNumber,
   type ColumnMapping,
   type Conversion,
   type DataType,
@@ -21,6 +18,7 @@ import {
   type MappingConfigTypeTransformation,
   type MappingConfigTransformation,
 } from "../utils/mapping.ts";
+import { applyTransformation, transformValue } from "../utils/transformation.ts";
 
 const DECIMAL_SEPARATORS: { separator: DecimalSeparator; label: string }[] = [
   { separator: ".", label: "Period (1,234.56)" },
@@ -33,75 +31,6 @@ interface Example {
   description: string;
   csv: string;
   mapping: string;
-}
-
-function convertValue(
-  value: string,
-  sourceType: DataType,
-  conversions: Conversion[],
-  decimalSeparator: DecimalSeparator = "."
-): string {
-  for (const conv of conversions) {
-    if (conv.sourceValue.toLowerCase() === value.toLowerCase()) {
-      return conv.targetValue;
-    }
-  }
-
-  switch (sourceType) {
-    case "boolean": {
-      const lower = value.toLowerCase();
-      if (["true", "t", "yes", "y", "1"].includes(lower)) return "true";
-      if (["false", "f", "no", "n", "0"].includes(lower)) return "false";
-      return value;
-    }
-    case "integer": {
-      const num = parseNumber(value, decimalSeparator);
-      if (isNaN(num)) return value;
-      return Math.round(num).toString();
-    }
-    case "number": {
-      const num = parseNumber(value, decimalSeparator);
-      return formatNumber(num) || value;
-    }
-    default:
-      return value;
-  }
-}
-
-function applyTransformation(value: string, transformation?: string): string {
-  if (!transformation) return value;
-
-  switch (transformation) {
-    case "uppercase":
-      return value.toUpperCase();
-    case "lowercase":
-      return value.toLowerCase();
-    case "trim":
-      return value.trim();
-    case "date":
-      // Auto-detect input format, output as yyyy-MM-dd
-      return formatDateAutoDetect(value, "yyyy-MM-dd");
-    default:
-      // Handle dateFormat:FORMAT pattern (legacy, auto-detect source)
-      if (transformation.startsWith("dateFormat:")) {
-        const format = transformation.slice(11);
-        return formatDateAutoDetect(value, format);
-      }
-      // Handle date:targetFormat (auto-detect source) or date:sourceFormat:targetFormat
-      if (transformation.startsWith("date:")) {
-        const parts = transformation.slice(5).split(":");
-        if (parts.length === 1) {
-          // date:targetFormat - auto-detect source
-          return formatDateAutoDetect(value, parts[0]);
-        } else {
-          // date:sourceFormat:targetFormat - explicit source format
-          const sourceFormat = parts[0] || "yyyy-MM-dd";
-          const targetFormat = parts[1] || "yyyy-MM-dd";
-          return transformDate(value, sourceFormat, targetFormat);
-        }
-      }
-      return value;
-  }
 }
 
 function generateOutputCSV(
@@ -120,7 +49,7 @@ function generateOutputCSV(
         const colIndex = parsedCSV.headers.indexOf(mapping.sourceColumn);
         if (colIndex === -1) return "";
         const value = row[colIndex] || "";
-        const converted = convertValue(
+        const converted = transformValue(
           value,
           mapping.sourceType,
           mapping.conversions,
@@ -1020,7 +949,7 @@ invalid dates output empty string`}</pre>
                                 mapping.sourceColumn
                               );
                               const original = row[colIndex] || "";
-                              const converted = convertValue(
+                              const converted = transformValue(
                                 original,
                                 mapping.sourceType,
                                 mapping.conversions,
@@ -1117,7 +1046,7 @@ invalid dates output empty string`}</pre>
                             mapping.sourceColumn
                           );
                           const value = row[colIndex] || "";
-                          const converted = convertValue(
+                          const converted = transformValue(
                             value,
                             mapping.sourceType,
                             mapping.conversions,
