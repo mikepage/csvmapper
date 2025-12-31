@@ -12,8 +12,10 @@ import {
   type DecimalSeparator,
 } from "../utils/mapping.ts";
 import { applyTransformation, transformValue } from "../utils/transformation.ts";
-import ImportExportSchema from "./ImportExportSchema.tsx";
+import ImportSchema from "./ImportSchema.tsx";
+import ExportSchema from "./ExportSchema.tsx";
 import ColumnMappingIsland from "./ColumnMapping.tsx";
+import ExampleSelector from "./ExampleSelector.tsx";
 
 const DECIMAL_SEPARATORS: { separator: DecimalSeparator; label: string }[] = [
   { separator: ".", label: "Period (1,234.56)" },
@@ -68,6 +70,7 @@ export default function CSVMapper() {
   const decimalSeparator = useSignal<DecimalSeparator>(",");
   const importError = useSignal<string | null>(null);
   const importSuccess = useSignal<string | null>(null);
+  const schemaName = useSignal("Untitled");
 
   const outputCSV = useComputed(() => {
     if (parsedCSV.value.headers.length === 0) return "";
@@ -223,37 +226,37 @@ export default function CSVMapper() {
           rows={6}
         />
 
-        <div class="mt-3 flex items-center gap-4">
-          <div class="flex items-center gap-2">
-            <label class="text-sm text-gray-600">Input delimiter:</label>
+        <div class="mt-3 grid grid-cols-3 gap-4">
+          <div>
+            <label class="block text-sm text-gray-600 mb-1">Input delimiter</label>
             <select
               value={inputDelimiter.value}
               onChange={(e) => handleInputDelimiterChange((e.target as HTMLSelectElement).value as Delimiter)}
-              class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              class="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             >
               {DELIMITERS.map((d) => (
                 <option key={d.delimiter} value={d.delimiter}>{d.label}</option>
               ))}
             </select>
           </div>
-          <div class="flex items-center gap-2">
-            <label class="text-sm text-gray-600">Output delimiter:</label>
+          <div>
+            <label class="block text-sm text-gray-600 mb-1">Output delimiter</label>
             <select
               value={outputDelimiter.value}
               onChange={(e) => outputDelimiter.value = (e.target as HTMLSelectElement).value as Delimiter}
-              class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              class="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             >
               {DELIMITERS.map((d) => (
                 <option key={d.delimiter} value={d.delimiter}>{d.label}</option>
               ))}
             </select>
           </div>
-          <div class="flex items-center gap-2">
-            <label class="text-sm text-gray-600">Decimal separator:</label>
+          <div>
+            <label class="block text-sm text-gray-600 mb-1">Decimal separator</label>
             <select
               value={decimalSeparator.value}
               onChange={(e) => decimalSeparator.value = (e.target as HTMLSelectElement).value as DecimalSeparator}
-              class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              class="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             >
               {DECIMAL_SEPARATORS.map((d) => (
                 <option key={d.separator} value={d.separator}>{d.label}</option>
@@ -263,7 +266,7 @@ export default function CSVMapper() {
         </div>
       </div>
 
-      {/* Action Buttons */}
+      {/* Action Buttons and Example Selector */}
       <div class="flex flex-wrap items-center gap-3 mb-6">
         <button
           onClick={handleParseCSV}
@@ -282,10 +285,19 @@ export default function CSVMapper() {
         >
           Clear
         </button>
+        <div class="ml-auto">
+          <ExampleSelector
+            inputCSV={inputCSV}
+            parsedCSV={parsedCSV}
+            mappings={mappings}
+            inputDelimiter={inputDelimiter}
+            encodingInfo={encodingInfo}
+          />
+        </div>
       </div>
 
-      {/* Import/Export Schema - always visible */}
-      <ImportExportSchema
+      {/* Import Schema - always visible, expanded by default */}
+      <ImportSchema
         mappings={mappings}
         parsedCSV={parsedCSV}
         inputDelimiter={inputDelimiter}
@@ -293,6 +305,16 @@ export default function CSVMapper() {
         decimalSeparator={decimalSeparator}
         importError={importError}
         importSuccess={importSuccess}
+        schemaName={schemaName}
+      />
+
+      {/* Export Schema - collapsed by default */}
+      <ExportSchema
+        mappings={mappings}
+        inputDelimiter={inputDelimiter}
+        outputDelimiter={outputDelimiter}
+        decimalSeparator={decimalSeparator}
+        schemaName={schemaName}
       />
 
       {/* Mapping Configuration */}

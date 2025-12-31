@@ -1,7 +1,5 @@
-import { useSignal, type Signal } from "@preact/signals";
+import { type Signal } from "@preact/signals";
 import {
-  exportMappingConfig,
-  serializeMappingConfig,
   type ColumnMapping,
   type DataType,
   type DecimalSeparator,
@@ -11,17 +9,7 @@ import {
 } from "../utils/mapping.ts";
 import { type Delimiter, type ParsedCSV } from "../utils/csv.ts";
 
-interface SchemaItem {
-  name: string;
-  config: MappingConfig;
-}
-
-interface MappingCollection {
-  $schema: string;
-  schemas: SchemaItem[];
-}
-
-interface ImportExportSchemaProps {
+interface ImportSchemaProps {
   mappings: Signal<ColumnMapping[]>;
   parsedCSV: Signal<ParsedCSV>;
   inputDelimiter: Signal<Delimiter>;
@@ -29,9 +17,10 @@ interface ImportExportSchemaProps {
   decimalSeparator: Signal<DecimalSeparator>;
   importError: Signal<string | null>;
   importSuccess: Signal<string | null>;
+  schemaName: Signal<string>;
 }
 
-export default function ImportExportSchema({
+export default function ImportSchema({
   mappings,
   parsedCSV,
   inputDelimiter,
@@ -39,51 +28,8 @@ export default function ImportExportSchema({
   decimalSeparator,
   importError,
   importSuccess,
-}: ImportExportSchemaProps) {
-  const schemaName = useSignal("Untitled");
-
-  const getMappingConfig = (): MappingConfig => {
-    return exportMappingConfig({
-      mappings: mappings.value,
-      inputDelimiter: inputDelimiter.value,
-      outputDelimiter: outputDelimiter.value,
-      decimalSeparator: decimalSeparator.value,
-    });
-  };
-
-  const getCollection = (): MappingCollection => {
-    return {
-      $schema: "https://csvmapper.mikepage.deno.net/schemas/mapping.schema.json#/$defs/MappingCollection",
-      schemas: [
-        {
-          name: schemaName.value,
-          config: getMappingConfig(),
-        },
-      ],
-    };
-  };
-
-  const getFormattedJson = (): string => {
-    const collection = getCollection();
-    return JSON.stringify(collection, null, 2);
-  };
-
-  const downloadMappingJson = () => {
-    const json = getFormattedJson();
-    const blob = new Blob([json], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "mapping-collection.json";
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const copyMappingJson = () => {
-    const json = getFormattedJson();
-    navigator.clipboard.writeText(json);
-  };
-
+  schemaName,
+}: ImportSchemaProps) {
   const applySchemaConfig = (config: MappingConfig): boolean => {
     const mappingsObj = config.mappings as Record<string, string>;
     const validTypes = ["string", "integer", "number", "boolean"];
@@ -139,7 +85,7 @@ export default function ImportExportSchema({
     }
 
     if (parsedCSV.value.headers.length === 0) {
-      importError.value = "No CSV loaded. Please parse a CSV file first.";
+      importError.value = "No CSV loaded. Please load a CSV file first.";
       return false;
     }
 
@@ -206,7 +152,6 @@ export default function ImportExportSchema({
 
     const obj = data as Record<string, unknown>;
 
-    // Check if it's a collection format
     if (!obj.schemas || !Array.isArray(obj.schemas)) {
       importError.value = "Invalid format: expected a collection with 'schemas' array";
       return false;
@@ -218,7 +163,6 @@ export default function ImportExportSchema({
       return false;
     }
 
-    // For now, apply the first schema
     const firstSchema = schemas[0];
     if (!firstSchema.name || typeof firstSchema.name !== "string") {
       importError.value = "Schema must have a 'name' property";
@@ -284,7 +228,7 @@ export default function ImportExportSchema({
   return (
     <details open class="bg-white rounded-lg shadow border border-gray-200">
       <summary class="px-4 py-3 cursor-pointer text-sm font-medium text-gray-700 hover:bg-gray-50 select-none">
-        Import / Export Mapping Schema
+        Import Schema
       </summary>
       <div class="px-4 py-4 border-t border-gray-200 space-y-4">
         {importError.value && (
@@ -298,62 +242,9 @@ export default function ImportExportSchema({
           </div>
         )}
 
-        {/* Export Section with JSON Output */}
-        <div>
-          <h4 class="text-xs font-medium text-gray-600 uppercase mb-2">Export</h4>
-          <div class="flex items-center gap-2 mb-3">
-            <label class="text-sm text-gray-600">Schema name:</label>
-            <input
-              type="text"
-              value={schemaName.value}
-              onInput={(e) => schemaName.value = (e.target as HTMLInputElement).value}
-              class="px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
-          <div class="flex gap-2 mb-3">
-            <button
-              onClick={downloadMappingJson}
-              class="px-3 py-1.5 text-sm bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
-            >
-              Download JSON
-            </button>
-            <button
-              onClick={copyMappingJson}
-              class="px-3 py-1.5 text-sm bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
-            >
-              Copy to Clipboard
-            </button>
-          </div>
-          <pre class="p-3 bg-gray-100 rounded-lg overflow-x-auto text-xs font-mono max-h-48 overflow-y-auto">
-            {getFormattedJson()}
-          </pre>
-        </div>
-
-        {/* Import from Text */}
-        <div>
-          <h4 class="text-xs font-medium text-gray-600 uppercase mb-2">Import from JSON</h4>
-          <textarea
-            id="import-json-text"
-            class="w-full p-2 border border-gray-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            placeholder='{"$schema": "...", "schemas": [...]}'
-            rows={3}
-          />
-          <button
-            onClick={() => {
-              const textarea = document.getElementById("import-json-text") as HTMLTextAreaElement;
-              if (textarea.value.trim() && handleImportFromText(textarea.value)) {
-                textarea.value = "";
-              }
-            }}
-            class="mt-2 px-3 py-1.5 text-sm rounded-lg transition-colors bg-blue-600 text-white hover:bg-blue-700"
-          >
-            Import from Text
-          </button>
-        </div>
-
         {/* Import from URL */}
         <div>
-          <h4 class="text-xs font-medium text-gray-600 uppercase mb-2">Import from URL</h4>
+          <label class="block text-sm text-gray-600 mb-1">Import from URL</label>
           <div class="flex gap-2 mb-2">
             <input
               type="url"
@@ -374,10 +265,32 @@ export default function ImportExportSchema({
             </button>
           </div>
           <button
-            onClick={() => handleImportFromUrl("https://csvmapper-schemas.mikepage.deno.net/examples/index.json")}
+            onClick={() => handleImportFromUrl("https://csvmapper-schemas.mikepage.deno.net/examples.json")}
             class="text-xs text-blue-600 hover:text-blue-800 hover:underline"
           >
             Load examples collection
+          </button>
+        </div>
+
+        {/* Import from Text */}
+        <div>
+          <label class="block text-sm text-gray-600 mb-1">Import from JSON</label>
+          <textarea
+            id="import-json-text"
+            class="w-full p-2 border border-gray-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            placeholder='{"$schema": "...", "schemas": [...]}'
+            rows={3}
+          />
+          <button
+            onClick={() => {
+              const textarea = document.getElementById("import-json-text") as HTMLTextAreaElement;
+              if (textarea.value.trim() && handleImportFromText(textarea.value)) {
+                textarea.value = "";
+              }
+            }}
+            class="mt-2 px-3 py-1.5 text-sm rounded-lg transition-colors bg-blue-600 text-white hover:bg-blue-700"
+          >
+            Import from Text
           </button>
         </div>
 
@@ -391,21 +304,10 @@ export default function ImportExportSchema({
       "name": "My Schema",
       "config": {
         "version": "1.0",
-        "inputDelimiter": "," | ";" | "\\t",
-        "outputDelimiter": "," | ";" | "\\t",
-        "decimalSeparator": "." | ",",
-        "mappings": {
-          "sourceColumn": "targetColumn"
-        },
-        "typeTransformations": {
-          "column": "string | integer | number | boolean"
-        },
-        "transformations": {
-          "column": "uppercase | lowercase | trim | date"
-        },
-        "valueConversions": {
-          "column": { "Mr": "male", "Ms": "female" }
-        }
+        "mappings": { "sourceColumn": "targetColumn" },
+        "typeTransformations": { "column": "integer" },
+        "transformations": { "column": "uppercase" },
+        "valueConversions": { "column": { "Mr": "male" } }
       }
     }
   ]
