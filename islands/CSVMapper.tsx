@@ -1228,12 +1228,13 @@ invalid dates output empty string`}</pre>
                             mapping.conversions,
                             decimalSeparator.value
                           );
+                          const transformed = applyTransformation(converted, mapping.transformation);
                           return (
                             <td
                               key={mapping.targetColumn}
                               class="py-2 px-4 text-gray-600 font-mono"
                             >
-                              {converted}
+                              {transformed}
                             </td>
                           );
                         })}
