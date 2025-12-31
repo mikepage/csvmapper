@@ -1,4 +1,4 @@
-import { type Signal } from "@preact/signals";
+import { useSignal, type Signal } from "@preact/signals";
 import {
   type ColumnMapping,
   type DataType,
@@ -8,6 +8,11 @@ import {
   type MappingConfigTransformation,
 } from "../utils/mapping.ts";
 import { type Delimiter, type ParsedCSV } from "../utils/csv.ts";
+
+interface SchemaItem {
+  name: string;
+  config: MappingConfig;
+}
 
 interface ImportSchemaProps {
   mappings: Signal<ColumnMapping[]>;
@@ -30,7 +35,10 @@ export default function ImportSchema({
   importSuccess,
   schemaName,
 }: ImportSchemaProps) {
-  const applySchemaConfig = (config: MappingConfig): boolean => {
+  const loadedSchemas = useSignal<SchemaItem[]>([]);
+  const selectedSchemaIndex = useSignal<number>(0);
+
+  const applySchemaConfig = (config: MappingConfig, name: string): boolean => {
     const mappingsObj = config.mappings as Record<string, string>;
     const validTypes = ["string", "integer", "number", "boolean"];
     const validDelimiters = [",", ";", "\t"];
@@ -138,10 +146,12 @@ export default function ImportSchema({
     });
 
     mappings.value = newMappings;
+    schemaName.value = name;
+    importSuccess.value = `Applied schema: ${name}`;
     return true;
   };
 
-  const validateAndApplyCollection = (data: unknown): boolean => {
+  const loadCollection = (data: unknown): boolean => {
     importError.value = null;
     importSuccess.value = null;
 
@@ -163,40 +173,44 @@ export default function ImportSchema({
       return false;
     }
 
-    const firstSchema = schemas[0];
-    if (!firstSchema.name || typeof firstSchema.name !== "string") {
-      importError.value = "Schema must have a 'name' property";
-      return false;
+    // Validate all schemas
+    const validSchemas: SchemaItem[] = [];
+    for (let i = 0; i < schemas.length; i++) {
+      const schema = schemas[i];
+      if (!schema.name || typeof schema.name !== "string") {
+        importError.value = `Schema ${i + 1}: must have a 'name' property`;
+        return false;
+      }
+
+      const config = schema.config as MappingConfig | undefined;
+      if (!config) {
+        importError.value = `Schema '${schema.name}': must have a 'config' property`;
+        return false;
+      }
+
+      if (config.version !== "1.0") {
+        importError.value = `Schema '${schema.name}': unsupported version ${config.version}. Expected "1.0"`;
+        return false;
+      }
+
+      if (!config.mappings || typeof config.mappings !== "object" || Array.isArray(config.mappings)) {
+        importError.value = `Schema '${schema.name}': 'mappings' must be an object`;
+        return false;
+      }
+
+      validSchemas.push({ name: schema.name, config });
     }
 
-    const config = firstSchema.config as MappingConfig | undefined;
-    if (!config) {
-      importError.value = "Schema must have a 'config' property";
-      return false;
-    }
-
-    if (config.version !== "1.0") {
-      importError.value = `Unsupported version: ${config.version}. Expected "1.0"`;
-      return false;
-    }
-
-    if (!config.mappings || typeof config.mappings !== "object" || Array.isArray(config.mappings)) {
-      importError.value = "Invalid mapping: 'mappings' must be an object";
-      return false;
-    }
-
-    if (applySchemaConfig(config)) {
-      schemaName.value = firstSchema.name;
-      importSuccess.value = `Imported schema: ${firstSchema.name}`;
-      return true;
-    }
-    return false;
+    loadedSchemas.value = validSchemas;
+    selectedSchemaIndex.value = 0;
+    importSuccess.value = `Loaded ${validSchemas.length} schema(s). Select one to apply.`;
+    return true;
   };
 
   const handleImportFromText = (text: string) => {
     try {
       const data = JSON.parse(text);
-      return validateAndApplyCollection(data);
+      return loadCollection(data);
     } catch {
       importError.value = "Invalid JSON syntax";
       return false;
@@ -218,10 +232,17 @@ export default function ImportSchema({
         return false;
       }
       const data = await response.json();
-      return validateAndApplyCollection(data);
+      return loadCollection(data);
     } catch (err) {
       importError.value = `Failed to fetch URL: ${err instanceof Error ? err.message : "Unknown error"}`;
       return false;
+    }
+  };
+
+  const applySelectedSchema = () => {
+    const schema = loadedSchemas.value[selectedSchemaIndex.value];
+    if (schema) {
+      applySchemaConfig(schema.config, schema.name);
     }
   };
 
@@ -239,6 +260,30 @@ export default function ImportSchema({
         {importSuccess.value && (
           <div class="p-3 bg-green-50 border border-green-200 rounded-lg">
             <div class="text-green-700 text-sm">{importSuccess.value}</div>
+          </div>
+        )}
+
+        {/* Schema Selector - shown when schemas are loaded */}
+        {loadedSchemas.value.length > 0 && (
+          <div class="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <label class="block text-sm text-blue-700 mb-2">Select schema to apply:</label>
+            <div class="flex gap-2">
+              <select
+                value={selectedSchemaIndex.value}
+                onChange={(e) => selectedSchemaIndex.value = parseInt((e.target as HTMLSelectElement).value)}
+                class="flex-1 px-3 py-1.5 text-sm border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                {loadedSchemas.value.map((schema, index) => (
+                  <option key={index} value={index}>{schema.name}</option>
+                ))}
+              </select>
+              <button
+                onClick={applySelectedSchema}
+                class="px-4 py-1.5 text-sm rounded-lg transition-colors bg-blue-600 text-white hover:bg-blue-700"
+              >
+                Apply
+              </button>
+            </div>
           </div>
         )}
 
@@ -261,7 +306,7 @@ export default function ImportSchema({
               }}
               class="px-3 py-1.5 text-sm rounded-lg transition-colors bg-blue-600 text-white hover:bg-blue-700"
             >
-              Fetch & Import
+              Fetch
             </button>
           </div>
           <button
@@ -290,7 +335,7 @@ export default function ImportSchema({
             }}
             class="mt-2 px-3 py-1.5 text-sm rounded-lg transition-colors bg-blue-600 text-white hover:bg-blue-700"
           >
-            Import from Text
+            Load
           </button>
         </div>
 
