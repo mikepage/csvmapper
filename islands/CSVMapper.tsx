@@ -1,4 +1,4 @@
-import { useSignal, useComputed, useSignalEffect } from "@preact/signals";
+import { useSignal, useComputed } from "@preact/signals";
 import { detectAndDecodeText } from "../utils/encoding.ts";
 import {
   detectDelimiter,
@@ -8,30 +8,18 @@ import {
   type ParsedCSV,
 } from "../utils/csv.ts";
 import {
-  exportMappingConfig,
-  serializeMappingConfig,
   type ColumnMapping,
-  type Conversion,
-  type DataType,
   type DecimalSeparator,
-  type MappingConfig,
-  type MappingConfigTypeTransformation,
-  type MappingConfigTransformation,
 } from "../utils/mapping.ts";
 import { applyTransformation, transformValue } from "../utils/transformation.ts";
+import ImportExportSchema from "./ImportExportSchema.tsx";
+import ColumnMappingIsland from "./ColumnMapping.tsx";
+import Examples from "./Examples.tsx";
 
 const DECIMAL_SEPARATORS: { separator: DecimalSeparator; label: string }[] = [
   { separator: ".", label: "Period (1,234.56)" },
   { separator: ",", label: "Comma (1.234,56)" },
 ];
-
-interface Example {
-  id: string;
-  name: string;
-  description: string;
-  csv: string;
-  mapping: string;
-}
 
 function generateOutputCSV(
   parsedCSV: ParsedCSV,
@@ -56,7 +44,6 @@ function generateOutputCSV(
           decimalSeparator
         );
         const transformed = applyTransformation(converted, mapping.transformation);
-        // Convert boolean to binary for CSV output
         const output = mapping.sourceType === "boolean"
           ? (transformed === "true" ? "1" : transformed === "false" ? "0" : transformed)
           : transformed;
@@ -75,31 +62,13 @@ export default function CSVMapper() {
   const inputCSV = useSignal("");
   const parsedCSV = useSignal<ParsedCSV>({ headers: [], rows: [] });
   const mappings = useSignal<ColumnMapping[]>([]);
-  const expandedMapping = useSignal<number | null>(null);
   const encodingInfo = useSignal<string | null>(null);
   const encodingError = useSignal<string | null>(null);
   const inputDelimiter = useSignal<Delimiter>(";");
   const outputDelimiter = useSignal<Delimiter>(";");
   const decimalSeparator = useSignal<DecimalSeparator>(",");
-  const importJsonText = useSignal("");
-  const importJsonUrl = useSignal("");
   const importError = useSignal<string | null>(null);
   const importSuccess = useSignal<string | null>(null);
-  const examples = useSignal<Example[]>([]);
-  const selectedExample = useSignal<string>("");
-  const exampleLoading = useSignal(false);
-
-  // Load examples index on mount
-  useSignalEffect(() => {
-    fetch("/examples/index.json")
-      .then((res) => res.json())
-      .then((data) => {
-        examples.value = data;
-      })
-      .catch(() => {
-        // Silently fail if examples not available
-      });
-  });
 
   const outputCSV = useComputed(() => {
     if (parsedCSV.value.headers.length === 0) return "";
@@ -107,7 +76,6 @@ export default function CSVMapper() {
   });
 
   const handleParseCSV = () => {
-    // Auto-detect delimiter if not already detected
     if (inputCSV.value.trim()) {
       const detected = detectDelimiter(inputCSV.value);
       inputDelimiter.value = detected;
@@ -116,7 +84,6 @@ export default function CSVMapper() {
     const parsed = parseCSV(inputCSV.value, inputDelimiter.value);
     parsedCSV.value = parsed;
 
-    // Create lookup map from existing mappings to preserve schema configuration
     const existingMappingsMap = new Map(
       mappings.value.map((m) => [m.sourceColumn, m])
     );
@@ -124,10 +91,8 @@ export default function CSVMapper() {
     const newMappings: ColumnMapping[] = parsed.headers.map((header) => {
       const existing = existingMappingsMap.get(header);
       if (existing) {
-        // Preserve existing mapping configuration
         return { ...existing };
       }
-      // Create default mapping for new columns
       return {
         sourceColumn: header,
         sourceType: "",
@@ -143,11 +108,9 @@ export default function CSVMapper() {
   const handleInputDelimiterChange = (newDelimiter: Delimiter) => {
     inputDelimiter.value = newDelimiter;
     if (inputCSV.value.trim() && parsedCSV.value.headers.length > 0) {
-      // Re-parse with new delimiter
       const parsed = parseCSV(inputCSV.value, newDelimiter);
       parsedCSV.value = parsed;
 
-      // Create lookup map from existing mappings to preserve schema configuration
       const existingMappingsMap = new Map(
         mappings.value.map((m) => [m.sourceColumn, m])
       );
@@ -155,10 +118,8 @@ export default function CSVMapper() {
       const newMappings: ColumnMapping[] = parsed.headers.map((header) => {
         const existing = existingMappingsMap.get(header);
         if (existing) {
-          // Preserve existing mapping configuration
           return { ...existing };
         }
-        // Create default mapping for new columns
         return {
           sourceColumn: header,
           sourceType: "",
@@ -172,97 +133,14 @@ export default function CSVMapper() {
     }
   };
 
-  const loadExample = async (exampleId: string) => {
-    const example = examples.value.find((e) => e.id === exampleId);
-    if (!example) return;
-
-    exampleLoading.value = true;
-    importError.value = null;
-    importSuccess.value = null;
-
-    try {
-      // Load CSV
-      const csvResponse = await fetch(`/examples/${example.csv}`);
-      if (!csvResponse.ok) throw new Error(`Failed to load CSV: ${csvResponse.statusText}`);
-      const csvText = await csvResponse.text();
-      inputCSV.value = csvText;
-
-      // Auto-detect delimiter and parse
-      const detected = detectDelimiter(csvText);
-      inputDelimiter.value = detected;
-      const parsed = parseCSV(csvText, detected);
-      parsedCSV.value = parsed;
-
-      // Create initial mappings
-      const initialMappings: ColumnMapping[] = parsed.headers.map((header) => {
-        return {
-          sourceColumn: header,
-          sourceType: "",
-          targetColumn: header,
-          conversions: [],
-          include: true,
-        };
-      });
-      mappings.value = initialMappings;
-
-      // Load and apply mapping
-      const mappingResponse = await fetch(`/examples/${example.mapping}`);
-      if (!mappingResponse.ok) throw new Error(`Failed to load mapping: ${mappingResponse.statusText}`);
-      const mappingConfig = await mappingResponse.json();
-      validateAndApplyMapping(mappingConfig);
-
-      selectedExample.value = exampleId;
-      encodingInfo.value = "UTF-8";
-    } catch (err) {
-      importError.value = `Failed to load example: ${err instanceof Error ? err.message : "Unknown error"}`;
-    } finally {
-      exampleLoading.value = false;
-    }
-  };
-
   const handleClear = () => {
     inputCSV.value = "";
     parsedCSV.value = { headers: [], rows: [] };
     mappings.value = [];
     encodingInfo.value = null;
     encodingError.value = null;
-    selectedExample.value = "";
     importError.value = null;
     importSuccess.value = null;
-  };
-
-  const updateMapping = (index: number, updates: Partial<ColumnMapping>) => {
-    const newMappings = [...mappings.value];
-    newMappings[index] = { ...newMappings[index], ...updates };
-    mappings.value = newMappings;
-  };
-
-  const addConversion = (mappingIndex: number) => {
-    const newMappings = [...mappings.value];
-    newMappings[mappingIndex].conversions.push({
-      sourceValue: "",
-      targetValue: "",
-    });
-    mappings.value = newMappings;
-  };
-
-  const updateConversion = (
-    mappingIndex: number,
-    convIndex: number,
-    updates: Partial<Conversion>
-  ) => {
-    const newMappings = [...mappings.value];
-    newMappings[mappingIndex].conversions[convIndex] = {
-      ...newMappings[mappingIndex].conversions[convIndex],
-      ...updates,
-    };
-    mappings.value = newMappings;
-  };
-
-  const removeConversion = (mappingIndex: number, convIndex: number) => {
-    const newMappings = [...mappings.value];
-    newMappings[mappingIndex].conversions.splice(convIndex, 1);
-    mappings.value = newMappings;
   };
 
   const handleFileUpload = (e: Event) => {
@@ -301,218 +179,6 @@ export default function CSVMapper() {
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(outputCSV.value);
-  };
-
-  const getMappingConfig = (): MappingConfig => {
-    return exportMappingConfig({
-      mappings: mappings.value,
-      inputDelimiter: inputDelimiter.value,
-      outputDelimiter: outputDelimiter.value,
-      decimalSeparator: decimalSeparator.value,
-    });
-  };
-
-  const downloadMappingJson = () => {
-    const config = getMappingConfig();
-    const json = serializeMappingConfig(config);
-    const blob = new Blob([json], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "mapping.json";
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const copyMappingJson = () => {
-    const config = getMappingConfig();
-    const json = serializeMappingConfig(config);
-    navigator.clipboard.writeText(json);
-  };
-
-  const validateAndApplyMapping = (config: unknown): boolean => {
-    importError.value = null;
-    importSuccess.value = null;
-
-    if (!config || typeof config !== "object") {
-      importError.value = "Invalid JSON: expected an object";
-      return false;
-    }
-
-    const obj = config as Record<string, unknown>;
-
-    if (obj.version !== "1.0") {
-      importError.value = `Unsupported version: ${obj.version}. Expected "1.0"`;
-      return false;
-    }
-
-    if (!obj.mappings || typeof obj.mappings !== "object" || Array.isArray(obj.mappings)) {
-      importError.value = "Invalid mapping: 'mappings' must be an object";
-      return false;
-    }
-
-    const mappingsObj = obj.mappings as Record<string, unknown>;
-    const validTypes = ["string", "integer", "number", "boolean"];
-    const validDelimiters = [",", ";", "\t"];
-
-    // Validate mappings object
-    for (const [source, target] of Object.entries(mappingsObj)) {
-      if (typeof target !== "string") {
-        importError.value = `Mapping '${source}': target must be a string`;
-        return false;
-      }
-    }
-
-    // Validate typeTransformations if present
-    if (obj.typeTransformations !== undefined) {
-      if (typeof obj.typeTransformations !== "object" || Array.isArray(obj.typeTransformations)) {
-        importError.value = "Invalid 'typeTransformations': must be an object";
-        return false;
-      }
-
-      const typeTransformationsObj = obj.typeTransformations as Record<string, unknown>;
-      for (const [source, transType] of Object.entries(typeTransformationsObj)) {
-        if (typeof transType !== "string" || !validTypes.includes(transType)) {
-          importError.value = `Type transformation '${source}': must be one of: ${validTypes.join(", ")}`;
-          return false;
-        }
-      }
-    }
-
-    // Validate transformations if present
-    const validTransformations = ["uppercase", "lowercase", "trim", "date"];
-    if (obj.transformations !== undefined) {
-      if (typeof obj.transformations !== "object" || Array.isArray(obj.transformations)) {
-        importError.value = "Invalid 'transformations': must be an object";
-        return false;
-      }
-
-      const transformationsObj = obj.transformations as Record<string, unknown>;
-      for (const [source, trans] of Object.entries(transformationsObj)) {
-        if (typeof trans !== "string") {
-          importError.value = `Transformation '${source}': must be a string`;
-          return false;
-        }
-        // Allow valid transformations, dateFormat:*, or date[:source][:target]
-        const isValid = validTransformations.includes(trans) ||
-          trans.startsWith("dateFormat:") ||
-          trans.startsWith("date:");
-        if (!isValid) {
-          importError.value = `Transformation '${source}': must be one of: ${validTransformations.join(", ")}, dateFormat:FORMAT, or date[:sourceFormat][:targetFormat]`;
-          return false;
-        }
-      }
-    }
-
-    if (obj.inputDelimiter !== undefined && !validDelimiters.includes(obj.inputDelimiter as string)) {
-      importError.value = `Invalid 'inputDelimiter': must be one of: comma, semicolon, tab`;
-      return false;
-    }
-
-    if (obj.outputDelimiter !== undefined && !validDelimiters.includes(obj.outputDelimiter as string)) {
-      importError.value = `Invalid 'outputDelimiter': must be one of: comma, semicolon, tab`;
-      return false;
-    }
-
-    const validDecimalSeparators = [".", ","];
-    if (obj.decimalSeparator !== undefined && !validDecimalSeparators.includes(obj.decimalSeparator as string)) {
-      importError.value = `Invalid 'decimalSeparator': must be one of: . (period), , (comma)`;
-      return false;
-    }
-
-    // Validate that mapping sourceColumns exist in parsed CSV headers
-    if (parsedCSV.value.headers.length === 0) {
-      importError.value = "No CSV loaded. Please parse a CSV file first.";
-      return false;
-    }
-
-    const sourceHeaders = new Set(parsedCSV.value.headers);
-    const missingHeaders: string[] = [];
-    for (const source of Object.keys(mappingsObj)) {
-      if (!sourceHeaders.has(source)) {
-        missingHeaders.push(source);
-      }
-    }
-
-    if (missingHeaders.length > 0) {
-      importError.value = `Mapping references columns not in source CSV: ${missingHeaders.join(", ")}`;
-      return false;
-    }
-
-    // Apply the configuration
-    if (obj.inputDelimiter) {
-      inputDelimiter.value = obj.inputDelimiter as Delimiter;
-    }
-    if (obj.outputDelimiter) {
-      outputDelimiter.value = obj.outputDelimiter as Delimiter;
-    }
-    if (obj.decimalSeparator) {
-      decimalSeparator.value = obj.decimalSeparator as DecimalSeparator;
-    }
-
-    const typeTransformationsObj = (obj.typeTransformations || {}) as Record<string, MappingConfigTypeTransformation>;
-    const transformationsObj = (obj.transformations || {}) as Record<string, MappingConfigTransformation>;
-    const valueConversionsObj = (obj.valueConversions || {}) as Record<string, Record<string, string>>;
-
-    // Build mappings from parsed CSV headers
-    const newMappings: ColumnMapping[] = parsedCSV.value.headers.map((header) => {
-      const isIncluded = header in mappingsObj;
-      const targetColumn = isIncluded ? (mappingsObj[header] as string) : header;
-      const transformationType = typeTransformationsObj[header];
-      const transformation = transformationsObj[header];
-      const valueConvMap = valueConversionsObj[header] || {};
-      const conversions = Object.entries(valueConvMap).map(([sourceValue, targetValue]) => ({
-        sourceValue,
-        targetValue,
-      }));
-
-      return {
-        sourceColumn: header,
-        sourceType: (transformationType || "") as DataType,
-        targetColumn,
-        conversions,
-        transformation,
-        include: isIncluded,
-      };
-    });
-
-    mappings.value = newMappings;
-    importSuccess.value = `Imported ${Object.keys(mappingsObj).length} mapping(s)`;
-    return true;
-  };
-
-  const importFromText = () => {
-    try {
-      const config = JSON.parse(importJsonText.value);
-      if (validateAndApplyMapping(config)) {
-        importJsonText.value = "";
-      }
-    } catch {
-      importError.value = "Invalid JSON syntax";
-    }
-  };
-
-  const importFromUrl = async () => {
-    if (!importJsonUrl.value.trim()) {
-      importError.value = "Please enter a URL";
-      return;
-    }
-
-    try {
-      importError.value = null;
-      importSuccess.value = null;
-      const response = await fetch(importJsonUrl.value);
-      if (!response.ok) {
-        importError.value = `Failed to fetch: ${response.status} ${response.statusText}`;
-        return;
-      }
-      const config = await response.json();
-      if (validateAndApplyMapping(config)) {
-        importJsonUrl.value = "";
-      }
-    } catch (err) {
-      importError.value = `Failed to fetch URL: ${err instanceof Error ? err.message : "Unknown error"}`;
-    }
   };
 
   return (
@@ -617,41 +283,20 @@ export default function CSVMapper() {
         >
           Clear
         </button>
-
-        {examples.value.length > 0 && (
-          <div class="flex items-center gap-2 ml-auto">
-            <label class="text-sm text-gray-600">Load example:</label>
-            <select
-              value={selectedExample.value}
-              onChange={(e) => {
-                const value = (e.target as HTMLSelectElement).value;
-                if (value) loadExample(value);
-              }}
-              disabled={exampleLoading.value}
-              class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50"
-            >
-              <option value="">Select example...</option>
-              {examples.value.map((ex) => (
-                <option key={ex.id} value={ex.id}>{ex.name}</option>
-              ))}
-            </select>
-            {exampleLoading.value && (
-              <span class="text-sm text-gray-500">Loading...</span>
-            )}
-          </div>
-        )}
       </div>
 
-      {/* Example Description */}
-      {selectedExample.value && (
-        <div class="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-          <div class="text-blue-700 text-sm">
-            {examples.value.find((e) => e.id === selectedExample.value)?.description}
-          </div>
-        </div>
-      )}
+      {/* Examples */}
+      <Examples
+        inputCSV={inputCSV}
+        parsedCSV={parsedCSV}
+        mappings={mappings}
+        inputDelimiter={inputDelimiter}
+        encodingInfo={encodingInfo}
+        importError={importError}
+        importSuccess={importSuccess}
+      />
 
-      {/* Column Mapping */}
+      {/* Mapping Configuration */}
       {parsedCSV.value.headers.length > 0 && (
         <div class="space-y-4">
           <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
@@ -671,318 +316,23 @@ export default function CSVMapper() {
             </div>
           </div>
 
-          {/* Import/Export Mapping Schema */}
-          <details class="bg-white rounded-lg shadow border border-gray-200">
-            <summary class="px-4 py-3 cursor-pointer text-sm font-medium text-gray-700 hover:bg-gray-50 select-none">
-              Import / Export Mapping Schema
-            </summary>
-            <div class="px-4 py-4 border-t border-gray-200 space-y-4">
-              {/* Error/Success Messages */}
-              {importError.value && (
-                <div class="p-3 bg-red-50 border border-red-200 rounded-lg">
-                  <div class="text-red-700 text-sm">{importError.value}</div>
-                </div>
-              )}
-              {importSuccess.value && (
-                <div class="p-3 bg-green-50 border border-green-200 rounded-lg">
-                  <div class="text-green-700 text-sm">{importSuccess.value}</div>
-                </div>
-              )}
+          {/* Import/Export Schema - expanded by default */}
+          <ImportExportSchema
+            mappings={mappings}
+            parsedCSV={parsedCSV}
+            inputDelimiter={inputDelimiter}
+            outputDelimiter={outputDelimiter}
+            decimalSeparator={decimalSeparator}
+            importError={importError}
+            importSuccess={importSuccess}
+          />
 
-              {/* Export Section */}
-              <div>
-                <h4 class="text-xs font-medium text-gray-600 uppercase mb-2">Export</h4>
-                <div class="flex gap-2">
-                  <button
-                    onClick={downloadMappingJson}
-                    class="px-3 py-1.5 text-sm bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
-                  >
-                    Download JSON
-                  </button>
-                  <button
-                    onClick={copyMappingJson}
-                    class="px-3 py-1.5 text-sm bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
-                  >
-                    Copy to Clipboard
-                  </button>
-                </div>
-              </div>
-
-              {/* Import from Text */}
-              <div>
-                <h4 class="text-xs font-medium text-gray-600 uppercase mb-2">Import from JSON</h4>
-                <textarea
-                  value={importJsonText.value}
-                  onInput={(e) => importJsonText.value = (e.target as HTMLTextAreaElement).value}
-                  class="w-full p-2 border border-gray-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder='{"version": "1.0", "mappings": [...]}'
-                  rows={3}
-                />
-                <button
-                  onClick={importFromText}
-                  disabled={!importJsonText.value.trim()}
-                  class={`mt-2 px-3 py-1.5 text-sm rounded-lg transition-colors ${
-                    !importJsonText.value.trim()
-                      ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-                      : "bg-blue-600 text-white hover:bg-blue-700"
-                  }`}
-                >
-                  Import from Text
-                </button>
-              </div>
-
-              {/* Import from URL */}
-              <div>
-                <h4 class="text-xs font-medium text-gray-600 uppercase mb-2">Import from URL</h4>
-                <div class="flex gap-2">
-                  <input
-                    type="url"
-                    value={importJsonUrl.value}
-                    onInput={(e) => importJsonUrl.value = (e.target as HTMLInputElement).value}
-                    class="flex-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="https://example.com/mapping.json"
-                  />
-                  <button
-                    onClick={importFromUrl}
-                    disabled={!importJsonUrl.value.trim()}
-                    class={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
-                      !importJsonUrl.value.trim()
-                        ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-                        : "bg-blue-600 text-white hover:bg-blue-700"
-                    }`}
-                  >
-                    Fetch & Import
-                  </button>
-                </div>
-              </div>
-
-              {/* Schema Reference */}
-              <details class="text-xs text-gray-500">
-                <summary class="cursor-pointer hover:text-gray-700">Schema Reference (JSON Schema types)</summary>
-                <pre class="mt-2 p-3 bg-gray-100 rounded-lg overflow-x-auto text-xs">{`{
-  "version": "1.0",
-  "inputDelimiter": "," | ";" | "\\t",
-  "outputDelimiter": "," | ";" | "\\t",
-  "decimalSeparator": "." | ",",
-  "mappings": {
-    "sourceColumn": "targetColumn"
-  },
-  "typeTransformations": {
-    "column": "string | integer | number | boolean"
-  },
-  "transformations": {
-    "column": "uppercase | lowercase | trim | date | date:targetFormat | date:sourceFormat:targetFormat"
-  },
-  "valueConversions": {
-    "column": { "Mr": "male", "Ms": "female" }
-  }
-}
-
-boolean outputs as 1/0 in CSV
-number/integer: thousand separators removed, decimal separator configurable
-valueConversions: map specific values to other values (case-insensitive)
-date: auto-detects input format (yyyy-MM-dd, dd/MM/yyyy, dd-MM-yyyy, dd.MM.yyyy, yyyy/MM/dd)
-date tokens: yyyy, MM, dd, HH, mm, ss
-date examples: date (auto → yyyy-MM-dd), date:dd/MM/yyyy (auto → custom)
-invalid dates output empty string`}</pre>
-              </details>
-            </div>
-          </details>
-
-          <div class="bg-white rounded-lg shadow border border-gray-200">
-            <div class="px-4 py-3 border-b border-gray-200">
-              <h3 class="text-sm font-medium text-gray-700">Column Mapping</h3>
-            </div>
-            <div class="divide-y divide-gray-100">
-              {mappings.value.map((mapping, index) => (
-                <div
-                  key={mapping.sourceColumn}
-                  class={`${mapping.include ? "" : "opacity-50"}`}
-                >
-                  <div class="flex items-center gap-4 px-4 py-3">
-                    <label class="flex items-center">
-                      <input
-                        type="checkbox"
-                        checked={mapping.include}
-                        onChange={(e) =>
-                          updateMapping(index, {
-                            include: (e.target as HTMLInputElement).checked,
-                          })
-                        }
-                        class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                      />
-                    </label>
-
-                    <div class="flex items-center gap-3 flex-1 min-w-0">
-                      <div class="w-32">
-                        <div class="text-xs text-gray-500 mb-0.5">Source</div>
-                        <div class="font-mono text-sm text-gray-800 truncate">
-                          {mapping.sourceColumn}
-                        </div>
-                      </div>
-
-                      <div class="text-gray-400">→</div>
-
-                      <div class="w-32">
-                        <div class="text-xs text-gray-500 mb-0.5">Target</div>
-                        <input
-                          type="text"
-                          value={mapping.targetColumn}
-                          onInput={(e) =>
-                            updateMapping(index, {
-                              targetColumn: (e.target as HTMLInputElement).value,
-                            })
-                          }
-                          class="w-full px-2 py-1 text-sm font-mono border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                          disabled={!mapping.include}
-                        />
-                      </div>
-
-                      <div class="w-28">
-                        <div class="text-xs text-gray-500 mb-0.5">Type</div>
-                        <select
-                          value={mapping.sourceType}
-                          onChange={(e) =>
-                            updateMapping(index, {
-                              sourceType: (e.target as HTMLSelectElement)
-                                .value as DataType,
-                            })
-                          }
-                          class="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                          disabled={!mapping.include}
-                        >
-                          <option value="">—</option>
-                          <option value="string">string</option>
-                          <option value="integer">integer</option>
-                          <option value="number">number</option>
-                          <option value="boolean">boolean</option>
-                        </select>
-                      </div>
-
-                      <div class="text-xs text-gray-400">
-                        {mapping.conversions.length > 0 && (
-                          <span class="bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
-                            {mapping.conversions.length} conversion{mapping.conversions.length > 1 ? "s" : ""}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={() =>
-                        expandedMapping.value =
-                          expandedMapping.value === index ? null : index
-                      }
-                      class="px-3 py-1 text-sm text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                      disabled={!mapping.include}
-                    >
-                      {expandedMapping.value === index ? "Hide" : "Edit"}
-                    </button>
-                  </div>
-
-                  {expandedMapping.value === index && mapping.include && (
-                    <div class="px-4 py-3 bg-gray-50 border-t border-gray-100">
-                      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <div class="flex items-center justify-between mb-2">
-                            <h4 class="text-xs font-medium text-gray-600 uppercase">
-                              Value Conversions
-                            </h4>
-                            <button
-                              onClick={() => addConversion(index)}
-                              class="text-xs text-blue-600 hover:text-blue-800"
-                            >
-                              + Add
-                            </button>
-                          </div>
-
-                          {mapping.conversions.length === 0 ? (
-                            <p class="text-sm text-gray-500 italic">
-                              No conversions. Default type conversion applied.
-                            </p>
-                          ) : (
-                            <div class="space-y-2">
-                              {mapping.conversions.map((conv, convIndex) => (
-                                <div key={convIndex} class="flex items-center gap-2">
-                                  <input
-                                    type="text"
-                                    value={conv.sourceValue}
-                                    onInput={(e) =>
-                                      updateConversion(index, convIndex, {
-                                        sourceValue: (e.target as HTMLInputElement).value,
-                                      })
-                                    }
-                                    placeholder="From"
-                                    class="flex-1 px-2 py-1 text-sm font-mono border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
-                                  />
-                                  <span class="text-gray-400">→</span>
-                                  <input
-                                    type="text"
-                                    value={conv.targetValue}
-                                    onInput={(e) =>
-                                      updateConversion(index, convIndex, {
-                                        targetValue: (e.target as HTMLInputElement).value,
-                                      })
-                                    }
-                                    placeholder="To"
-                                    class="flex-1 px-2 py-1 text-sm font-mono border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
-                                  />
-                                  <button
-                                    onClick={() => removeConversion(index, convIndex)}
-                                    class="text-red-500 hover:text-red-700 px-1"
-                                  >
-                                    ×
-                                  </button>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-
-                        <div>
-                          <h4 class="text-xs font-medium text-gray-600 uppercase mb-2">
-                            Sample Preview
-                          </h4>
-                          <div class="space-y-1">
-                            {parsedCSV.value.rows.slice(0, 4).map((row, rowIndex) => {
-                              const colIndex = parsedCSV.value.headers.indexOf(
-                                mapping.sourceColumn
-                              );
-                              const original = row[colIndex] || "";
-                              const converted = transformValue(
-                                original,
-                                mapping.sourceType,
-                                mapping.conversions,
-                                decimalSeparator.value
-                              );
-                              return (
-                                <div
-                                  key={rowIndex}
-                                  class="flex items-center gap-2 text-sm font-mono"
-                                >
-                                  <span class="text-gray-500">{original}</span>
-                                  <span class="text-gray-400">→</span>
-                                  <span
-                                    class={
-                                      original !== converted
-                                        ? "text-green-600 font-medium"
-                                        : "text-gray-700"
-                                    }
-                                  >
-                                    {converted}
-                                  </span>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
+          {/* Column Mapping - collapsed by default */}
+          <ColumnMappingIsland
+            mappings={mappings}
+            parsedCSV={parsedCSV}
+            decimalSeparator={decimalSeparator}
+          />
         </div>
       )}
 

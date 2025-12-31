@@ -68,6 +68,73 @@
         ".*": { "$ref": "#/$defs/ValueConversionMap" }
       },
       "description": "Record<string, ValueConversionMap> - column (key) maps to value conversions (value)"
+    },
+    "SchemaCollection": {
+      "type": "object",
+      "required": ["$schema", "schemas"],
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "description": "Reference to the schema definition"
+        },
+        "schemas": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name"],
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Human-readable label for the schema"
+              }
+            },
+            "additionalProperties": true
+          },
+          "description": "Array of schemas with 'name' as the label property"
+        }
+      },
+      "description": "A collection of schemas identified by 'name' as the label"
+    },
+    "Mapping": {
+      "type": "object",
+      "required": ["id", "name", "description", "csv", "mapping"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the mapping"
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable name/label for the mapping"
+        },
+        "description": {
+          "type": "string",
+          "description": "Description of what the mapping does"
+        },
+        "csv": {
+          "type": "string",
+          "description": "Filename of the CSV file"
+        },
+        "mapping": {
+          "type": "string",
+          "description": "Filename of the mapping configuration JSON"
+        }
+      },
+      "description": "A CSV mapping configuration for data conversion between systems"
+    },
+    "MappingCollection": {
+      "allOf": [
+        { "$ref": "#/$defs/SchemaCollection" },
+        {
+          "type": "object",
+          "properties": {
+            "schemas": {
+              "items": { "$ref": "#/$defs/Mapping" }
+            }
+          }
+        }
+      ],
+      "description": "A collection of mapping schemas for data conversion between systems"
     }
   },
   "properties": {
