@@ -103,13 +103,11 @@ function applyTransformation(value: string, transformation?: string): string {
   }
 }
 
-// Common date formats for auto-detection
+// Common date formats for auto-detection (EU formats only)
 const DATE_FORMATS = [
   "yyyy-MM-dd",
   "dd/MM/yyyy",
-  "MM/dd/yyyy",
   "dd-MM-yyyy",
-  "MM-dd-yyyy",
   "dd.MM.yyyy",
   "yyyy/MM/dd",
 ];
@@ -117,13 +115,6 @@ const DATE_FORMATS = [
 function parseDate(value: string, format: string): Date | null {
   if (!value || !format) return null;
 
-  // Build regex from format
-  const formatParts: { token: string; index: number }[] = [];
-
-  // First escape special regex chars in the format string
-  let regex = format.replace(/[.*+?^$|[\]\\]/g, "\\$&");
-
-  // Order matters - replace longer tokens first
   const tokens = [
     { token: "yyyy", pattern: "(\\d{4})" },
     { token: "MM", pattern: "(\\d{2})" },
@@ -133,12 +124,26 @@ function parseDate(value: string, format: string): Date | null {
     { token: "ss", pattern: "(\\d{2})" },
   ];
 
-  let groupIndex = 1;
+  // Find all tokens and their positions in the format string
+  const foundTokens: { token: string; pattern: string; position: number }[] = [];
   for (const { token, pattern } of tokens) {
-    if (regex.includes(token)) {
-      formatParts.push({ token, index: groupIndex++ });
-      regex = regex.replace(token, pattern);
+    const pos = format.indexOf(token);
+    if (pos !== -1) {
+      foundTokens.push({ token, pattern, position: pos });
     }
+  }
+
+  // Sort by position in format string (left to right)
+  foundTokens.sort((a, b) => a.position - b.position);
+
+  // Build regex by replacing tokens in order of appearance
+  let regex = format.replace(/[.*+?^$|[\]\\]/g, "\\$&");
+  const formatParts: { token: string; index: number }[] = [];
+
+  for (let i = 0; i < foundTokens.length; i++) {
+    const { token, pattern } = foundTokens[i];
+    regex = regex.replace(token, pattern);
+    formatParts.push({ token, index: i + 1 });
   }
 
   const match = value.match(new RegExp("^" + regex + "$"));
@@ -189,15 +194,11 @@ function transformDate(value: string, sourceFormat: string, targetFormat: string
 function parseDateAutoDetect(value: string): Date | null {
   if (!value) return null;
 
-  // Try each common format until one works
+  // Try each EU format until one works (no native Date fallback to avoid US locale)
   for (const format of DATE_FORMATS) {
     const date = parseDate(value, format);
     if (date) return date;
   }
-
-  // Try native Date parsing as fallback (handles ISO formats with time)
-  const nativeDate = new Date(value);
-  if (!isNaN(nativeDate.getTime())) return nativeDate;
 
   return null;
 }
@@ -956,7 +957,7 @@ export default function CSVMapper() {
 boolean outputs as 1/0 in CSV
 number/integer: thousand separators removed, decimal separator configurable
 valueConversions: map specific values to other values (case-insensitive)
-date: auto-detects input format (yyyy-MM-dd, dd/MM/yyyy, MM/dd/yyyy, etc.)
+date: auto-detects input format (yyyy-MM-dd, dd/MM/yyyy, dd-MM-yyyy, dd.MM.yyyy, yyyy/MM/dd)
 date tokens: yyyy, MM, dd, HH, mm, ss
 date examples: date (auto → yyyy-MM-dd), date:dd/MM/yyyy (auto → custom)
 invalid dates output empty string`}</pre>

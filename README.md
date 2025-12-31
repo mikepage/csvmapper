@@ -65,14 +65,14 @@ A web-based CSV column mapping and transformation tool built with Deno Fresh.
 
 #### Auto-detected Date Formats
 
-The following input formats are automatically detected:
+The following input formats are automatically detected (EU formats only):
 - `yyyy-MM-dd` (ISO)
 - `dd/MM/yyyy`
-- `MM/dd/yyyy`
 - `dd-MM-yyyy`
-- `MM-dd-yyyy`
 - `dd.MM.yyyy`
 - `yyyy/MM/dd`
+
+For US formats like `MM/dd/yyyy`, use explicit source format: `date:MM/dd/yyyy:yyyy-MM-dd`
 
 #### Date Format Tokens
 
