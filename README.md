@@ -132,7 +132,7 @@ The `static/examples/` directory contains example CSV files with matching mappin
 | Example | Description |
 |---------|-------------|
 | `employees` | EU format: numbers `1.234,56`, dates `dd/MM/yyyy` → `yyyy-MM-dd`, title → gender (`Mr` → `male`) |
-| `products` | US format: numbers `1,234.56`, dates `yyyy-MM-dd`, availability (`yes`/`no` → `1`/`0`) |
+| `products` | Numbers `29.99`, dates `yyyy-MM-dd`, availability (`yes`/`no` → `1`/`0`) |
 
 Load examples directly from the UI using the "Load example" dropdown.
 
