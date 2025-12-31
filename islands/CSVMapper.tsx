@@ -291,7 +291,18 @@ export default function CSVMapper() {
     const parsed = parseCSV(inputCSV.value, inputDelimiter.value);
     parsedCSV.value = parsed;
 
+    // Create lookup map from existing mappings to preserve schema configuration
+    const existingMappingsMap = new Map(
+      mappings.value.map((m) => [m.sourceColumn, m])
+    );
+
     const newMappings: ColumnMapping[] = parsed.headers.map((header) => {
+      const existing = existingMappingsMap.get(header);
+      if (existing) {
+        // Preserve existing mapping configuration
+        return { ...existing };
+      }
+      // Create default mapping for new columns
       return {
         sourceColumn: header,
         sourceType: "",
@@ -311,7 +322,18 @@ export default function CSVMapper() {
       const parsed = parseCSV(inputCSV.value, newDelimiter);
       parsedCSV.value = parsed;
 
+      // Create lookup map from existing mappings to preserve schema configuration
+      const existingMappingsMap = new Map(
+        mappings.value.map((m) => [m.sourceColumn, m])
+      );
+
       const newMappings: ColumnMapping[] = parsed.headers.map((header) => {
+        const existing = existingMappingsMap.get(header);
+        if (existing) {
+          // Preserve existing mapping configuration
+          return { ...existing };
+        }
+        // Create default mapping for new columns
         return {
           sourceColumn: header,
           sourceType: "",
@@ -762,7 +784,7 @@ export default function CSVMapper() {
               : "bg-blue-600 text-white hover:bg-blue-700"
           }`}
         >
-          Parse CSV
+          Map CSV
         </button>
         <button
           onClick={handleClear}
