@@ -52,6 +52,22 @@
         ".*": { "$ref": "#/$defs/Transformation" }
       },
       "description": "Record<string, Transformation> - column (key) maps to transformation (value)"
+    },
+    "ValueConversionMap": {
+      "type": "object",
+      "propertyNames": { "type": "string" },
+      "patternProperties": {
+        ".*": { "type": "string" }
+      },
+      "description": "Record<string, string> - source value (key) maps to target value (value)"
+    },
+    "ColumnValueConversions": {
+      "type": "object",
+      "propertyNames": { "type": "string" },
+      "patternProperties": {
+        ".*": { "$ref": "#/$defs/ValueConversionMap" }
+      },
+      "description": "Record<string, ValueConversionMap> - column (key) maps to value conversions (value)"
     }
   },
   "properties": {
@@ -83,16 +99,21 @@
     "transformations": {
       "$ref": "#/$defs/TransformationMap",
       "description": "Value transformations per column"
+    },
+    "valueConversions": {
+      "$ref": "#/$defs/ColumnValueConversions",
+      "description": "Value conversions per column. Maps specific input values to output values."
     }
   },
   "examples": [
     {
       "version": "1.0",
-      "inputDelimiter": ",",
+      "inputDelimiter": ";",
       "outputDelimiter": ";",
       "decimalSeparator": ",",
       "mappings": {
         "id": "ID",
+        "title": "gender",
         "name": "fullName",
         "active": "isActive",
         "score": "totalScore",
@@ -106,6 +127,13 @@
       "transformations": {
         "name": "uppercase",
         "created": "date:dd/MM/yyyy:yyyy-MM-dd"
+      },
+      "valueConversions": {
+        "title": {
+          "Mr": "male",
+          "Ms": "female",
+          "Mrs": "female"
+        }
       }
     }
   ]

@@ -1,4 +1,4 @@
-import { useSignal, useComputed } from "@preact/signals";
+import { useSignal, useComputed, useSignalEffect } from "@preact/signals";
 import { detectAndDecodeText } from "../utils/encoding.ts";
 import {
   detectDelimiter,
@@ -26,12 +26,13 @@ const DECIMAL_SEPARATORS: { separator: DecimalSeparator; label: string }[] = [
   { separator: ",", label: "Comma (1.234,56)" },
 ];
 
-const SAMPLE_CSV = `id;name;active;score;salary;created;grade
-1;John Doe;T;85,5;1.234,56;15/01/2024;A
-2;Jane Smith;F;92,3;2.500,00;20/02/2024;B
-3;Bob Wilson;T;78,0;999,99;10/03/2024;C
-4;Alice Brown;F;88,7;3.150,25;05/04/2024;A
-5;Charlie Davis;T;95,2;12.000,00;12/05/2024;B`;
+interface Example {
+  id: string;
+  name: string;
+  description: string;
+  csv: string;
+  mapping: string;
+}
 
 function inferType(values: string[]): DataType {
   const nonEmpty = values.filter((v) => v.trim() !== "");
@@ -266,6 +267,21 @@ export default function CSVMapper() {
   const importJsonUrl = useSignal("");
   const importError = useSignal<string | null>(null);
   const importSuccess = useSignal<string | null>(null);
+  const examples = useSignal<Example[]>([]);
+  const selectedExample = useSignal<string>("");
+  const exampleLoading = useSignal(false);
+
+  // Load examples index on mount
+  useSignalEffect(() => {
+    fetch("/examples/index.json")
+      .then((res) => res.json())
+      .then((data) => {
+        examples.value = data;
+      })
+      .catch(() => {
+        // Silently fail if examples not available
+      });
+  });
 
   const outputCSV = useComputed(() => {
     if (parsedCSV.value.headers.length === 0) return "";
@@ -326,8 +342,56 @@ export default function CSVMapper() {
     }
   };
 
-  const handleLoadSample = () => {
-    inputCSV.value = SAMPLE_CSV;
+  const loadExample = async (exampleId: string) => {
+    const example = examples.value.find((e) => e.id === exampleId);
+    if (!example) return;
+
+    exampleLoading.value = true;
+    importError.value = null;
+    importSuccess.value = null;
+
+    try {
+      // Load CSV
+      const csvResponse = await fetch(`/examples/${example.csv}`);
+      if (!csvResponse.ok) throw new Error(`Failed to load CSV: ${csvResponse.statusText}`);
+      const csvText = await csvResponse.text();
+      inputCSV.value = csvText;
+
+      // Auto-detect delimiter and parse
+      const detected = detectDelimiter(csvText);
+      inputDelimiter.value = detected;
+      const parsed = parseCSV(csvText, detected);
+      parsedCSV.value = parsed;
+
+      // Create initial mappings
+      const initialMappings: ColumnMapping[] = parsed.headers.map((header) => {
+        const columnValues = parsed.rows.map(
+          (row) => row[parsed.headers.indexOf(header)] || ""
+        );
+        const detectedType = inferType(columnValues);
+        return {
+          sourceColumn: header,
+          sourceType: detectedType,
+          targetColumn: header,
+          conversions: [],
+          include: true,
+        };
+      });
+      mappings.value = initialMappings;
+
+      // Load and apply mapping
+      const mappingResponse = await fetch(`/examples/${example.mapping}`);
+      if (!mappingResponse.ok) throw new Error(`Failed to load mapping: ${mappingResponse.statusText}`);
+      const mappingConfig = await mappingResponse.json();
+      validateAndApplyMapping(mappingConfig);
+
+      selectedExample.value = exampleId;
+      encodingInfo.value = "UTF-8";
+    } catch (err) {
+      importError.value = `Failed to load example: ${err instanceof Error ? err.message : "Unknown error"}`;
+    } finally {
+      exampleLoading.value = false;
+    }
   };
 
   const handleClear = () => {
@@ -336,6 +400,9 @@ export default function CSVMapper() {
     mappings.value = [];
     encodingInfo.value = null;
     encodingError.value = null;
+    selectedExample.value = "";
+    importError.value = null;
+    importSuccess.value = null;
   };
 
   const updateMapping = (index: number, updates: Partial<ColumnMapping>) => {
@@ -559,6 +626,7 @@ export default function CSVMapper() {
 
     const typeTransformationsObj = (obj.typeTransformations || {}) as Record<string, MappingConfigTypeTransformation>;
     const transformationsObj = (obj.transformations || {}) as Record<string, MappingConfigTransformation>;
+    const valueConversionsObj = (obj.valueConversions || {}) as Record<string, Record<string, string>>;
 
     // Build mappings from parsed CSV headers
     const newMappings: ColumnMapping[] = parsedCSV.value.headers.map((header) => {
@@ -566,12 +634,17 @@ export default function CSVMapper() {
       const targetColumn = isIncluded ? (mappingsObj[header] as string) : header;
       const transformationType = typeTransformationsObj[header];
       const transformation = transformationsObj[header];
+      const valueConvMap = valueConversionsObj[header] || {};
+      const conversions = Object.entries(valueConvMap).map(([sourceValue, targetValue]) => ({
+        sourceValue,
+        targetValue,
+      }));
 
       return {
         sourceColumn: header,
         sourceType: (transformationType || "string") as DataType,
         targetColumn,
-        conversions: [],
+        conversions,
         transformation,
         include: isIncluded,
       };
@@ -700,7 +773,7 @@ export default function CSVMapper() {
       </div>
 
       {/* Action Buttons */}
-      <div class="flex gap-3 mb-6">
+      <div class="flex flex-wrap items-center gap-3 mb-6">
         <button
           onClick={handleParseCSV}
           disabled={!inputCSV.value.trim()}
@@ -713,18 +786,44 @@ export default function CSVMapper() {
           Parse CSV
         </button>
         <button
-          onClick={handleLoadSample}
-          class="px-4 py-2 bg-gray-200 text-gray-700 font-medium rounded-lg hover:bg-gray-300 transition-colors"
-        >
-          Load Sample
-        </button>
-        <button
           onClick={handleClear}
           class="px-4 py-2 bg-gray-200 text-gray-700 font-medium rounded-lg hover:bg-gray-300 transition-colors"
         >
           Clear
         </button>
+
+        {examples.value.length > 0 && (
+          <div class="flex items-center gap-2 ml-auto">
+            <label class="text-sm text-gray-600">Load example:</label>
+            <select
+              value={selectedExample.value}
+              onChange={(e) => {
+                const value = (e.target as HTMLSelectElement).value;
+                if (value) loadExample(value);
+              }}
+              disabled={exampleLoading.value}
+              class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50"
+            >
+              <option value="">Select example...</option>
+              {examples.value.map((ex) => (
+                <option key={ex.id} value={ex.id}>{ex.name}</option>
+              ))}
+            </select>
+            {exampleLoading.value && (
+              <span class="text-sm text-gray-500">Loading...</span>
+            )}
+          </div>
+        )}
       </div>
+
+      {/* Example Description */}
+      {selectedExample.value && (
+        <div class="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+          <div class="text-blue-700 text-sm">
+            {examples.value.find((e) => e.id === selectedExample.value)?.description}
+          </div>
+        </div>
+      )}
 
       {/* Column Mapping */}
       {parsedCSV.value.headers.length > 0 && (
@@ -745,6 +844,123 @@ export default function CSVMapper() {
               </div>
             </div>
           </div>
+
+          {/* Import/Export Mapping Schema */}
+          <details class="bg-white rounded-lg shadow border border-gray-200">
+            <summary class="px-4 py-3 cursor-pointer text-sm font-medium text-gray-700 hover:bg-gray-50 select-none">
+              Import / Export Mapping Schema
+            </summary>
+            <div class="px-4 py-4 border-t border-gray-200 space-y-4">
+              {/* Error/Success Messages */}
+              {importError.value && (
+                <div class="p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <div class="text-red-700 text-sm">{importError.value}</div>
+                </div>
+              )}
+              {importSuccess.value && (
+                <div class="p-3 bg-green-50 border border-green-200 rounded-lg">
+                  <div class="text-green-700 text-sm">{importSuccess.value}</div>
+                </div>
+              )}
+
+              {/* Export Section */}
+              <div>
+                <h4 class="text-xs font-medium text-gray-600 uppercase mb-2">Export</h4>
+                <div class="flex gap-2">
+                  <button
+                    onClick={downloadMappingJson}
+                    class="px-3 py-1.5 text-sm bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+                  >
+                    Download JSON
+                  </button>
+                  <button
+                    onClick={copyMappingJson}
+                    class="px-3 py-1.5 text-sm bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+                  >
+                    Copy to Clipboard
+                  </button>
+                </div>
+              </div>
+
+              {/* Import from Text */}
+              <div>
+                <h4 class="text-xs font-medium text-gray-600 uppercase mb-2">Import from JSON</h4>
+                <textarea
+                  value={importJsonText.value}
+                  onInput={(e) => importJsonText.value = (e.target as HTMLTextAreaElement).value}
+                  class="w-full p-2 border border-gray-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder='{"version": "1.0", "mappings": [...]}'
+                  rows={3}
+                />
+                <button
+                  onClick={importFromText}
+                  disabled={!importJsonText.value.trim()}
+                  class={`mt-2 px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                    !importJsonText.value.trim()
+                      ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                      : "bg-blue-600 text-white hover:bg-blue-700"
+                  }`}
+                >
+                  Import from Text
+                </button>
+              </div>
+
+              {/* Import from URL */}
+              <div>
+                <h4 class="text-xs font-medium text-gray-600 uppercase mb-2">Import from URL</h4>
+                <div class="flex gap-2">
+                  <input
+                    type="url"
+                    value={importJsonUrl.value}
+                    onInput={(e) => importJsonUrl.value = (e.target as HTMLInputElement).value}
+                    class="flex-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="https://example.com/mapping.json"
+                  />
+                  <button
+                    onClick={importFromUrl}
+                    disabled={!importJsonUrl.value.trim()}
+                    class={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                      !importJsonUrl.value.trim()
+                        ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                        : "bg-blue-600 text-white hover:bg-blue-700"
+                    }`}
+                  >
+                    Fetch & Import
+                  </button>
+                </div>
+              </div>
+
+              {/* Schema Reference */}
+              <details class="text-xs text-gray-500">
+                <summary class="cursor-pointer hover:text-gray-700">Schema Reference (JSON Schema types)</summary>
+                <pre class="mt-2 p-3 bg-gray-100 rounded-lg overflow-x-auto text-xs">{`{
+  "version": "1.0",
+  "inputDelimiter": "," | ";" | "\\t",
+  "outputDelimiter": "," | ";" | "\\t",
+  "decimalSeparator": "." | ",",
+  "mappings": {
+    "sourceColumn": "targetColumn"
+  },
+  "typeTransformations": {
+    "column": "string | integer | number | boolean"
+  },
+  "transformations": {
+    "column": "uppercase | lowercase | trim | date | date:sourceFormat | date:sourceFormat:targetFormat"
+  },
+  "valueConversions": {
+    "column": { "Mr": "male", "Ms": "female" }
+  }
+}
+
+boolean outputs as 1/0 in CSV
+number/integer: thousand separators removed, decimal separator configurable
+valueConversions: map specific values to other values (case-insensitive)
+date tokens: yyyy, MM, dd, HH, mm, ss
+date examples: date, date:dd/MM/yyyy, date:dd/MM/yyyy:yyyy-MM-dd
+invalid dates output empty string`}</pre>
+              </details>
+            </div>
+          </details>
 
           <div class="bg-white rounded-lg shadow border border-gray-200">
             <div class="px-4 py-3 border-b border-gray-200">
@@ -939,119 +1155,6 @@ export default function CSVMapper() {
               ))}
             </div>
           </div>
-
-          {/* Import/Export Mapping */}
-          <details class="bg-white rounded-lg shadow border border-gray-200">
-            <summary class="px-4 py-3 cursor-pointer text-sm font-medium text-gray-700 hover:bg-gray-50 select-none">
-              Import / Export Mapping Configuration
-            </summary>
-            <div class="px-4 py-4 border-t border-gray-200 space-y-4">
-              {/* Error/Success Messages */}
-              {importError.value && (
-                <div class="p-3 bg-red-50 border border-red-200 rounded-lg">
-                  <div class="text-red-700 text-sm">{importError.value}</div>
-                </div>
-              )}
-              {importSuccess.value && (
-                <div class="p-3 bg-green-50 border border-green-200 rounded-lg">
-                  <div class="text-green-700 text-sm">{importSuccess.value}</div>
-                </div>
-              )}
-
-              {/* Export Section */}
-              <div>
-                <h4 class="text-xs font-medium text-gray-600 uppercase mb-2">Export</h4>
-                <div class="flex gap-2">
-                  <button
-                    onClick={downloadMappingJson}
-                    class="px-3 py-1.5 text-sm bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
-                  >
-                    Download JSON
-                  </button>
-                  <button
-                    onClick={copyMappingJson}
-                    class="px-3 py-1.5 text-sm bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
-                  >
-                    Copy to Clipboard
-                  </button>
-                </div>
-              </div>
-
-              {/* Import from Text */}
-              <div>
-                <h4 class="text-xs font-medium text-gray-600 uppercase mb-2">Import from JSON</h4>
-                <textarea
-                  value={importJsonText.value}
-                  onInput={(e) => importJsonText.value = (e.target as HTMLTextAreaElement).value}
-                  class="w-full p-2 border border-gray-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder='{"version": "1.0", "mappings": [...]}'
-                  rows={3}
-                />
-                <button
-                  onClick={importFromText}
-                  disabled={!importJsonText.value.trim()}
-                  class={`mt-2 px-3 py-1.5 text-sm rounded-lg transition-colors ${
-                    !importJsonText.value.trim()
-                      ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-                      : "bg-blue-600 text-white hover:bg-blue-700"
-                  }`}
-                >
-                  Import from Text
-                </button>
-              </div>
-
-              {/* Import from URL */}
-              <div>
-                <h4 class="text-xs font-medium text-gray-600 uppercase mb-2">Import from URL</h4>
-                <div class="flex gap-2">
-                  <input
-                    type="url"
-                    value={importJsonUrl.value}
-                    onInput={(e) => importJsonUrl.value = (e.target as HTMLInputElement).value}
-                    class="flex-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="https://example.com/mapping.json"
-                  />
-                  <button
-                    onClick={importFromUrl}
-                    disabled={!importJsonUrl.value.trim()}
-                    class={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
-                      !importJsonUrl.value.trim()
-                        ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-                        : "bg-blue-600 text-white hover:bg-blue-700"
-                    }`}
-                  >
-                    Fetch & Import
-                  </button>
-                </div>
-              </div>
-
-              {/* Schema Reference */}
-              <details class="text-xs text-gray-500">
-                <summary class="cursor-pointer hover:text-gray-700">Schema Reference (JSON Schema types)</summary>
-                <pre class="mt-2 p-3 bg-gray-100 rounded-lg overflow-x-auto text-xs">{`{
-  "version": "1.0",
-  "inputDelimiter": "," | ";" | "\\t",
-  "outputDelimiter": "," | ";" | "\\t",
-  "decimalSeparator": "." | ",",
-  "mappings": {
-    "sourceColumn": "targetColumn"
-  },
-  "typeTransformations": {
-    "column": "string | integer | number | boolean"
-  },
-  "transformations": {
-    "column": "uppercase | lowercase | trim | date | date:sourceFormat | date:sourceFormat:targetFormat"
-  }
-}
-
-boolean outputs as 1/0 in CSV
-number/integer: thousand separators removed, decimal separator configurable
-date tokens: yyyy, MM, dd, HH, mm, ss
-date examples: date, date:dd/MM/yyyy, date:dd/MM/yyyy:yyyy-MM-dd
-invalid dates output empty string`}</pre>
-              </details>
-            </div>
-          </details>
         </div>
       )}
 

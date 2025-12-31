@@ -26,6 +26,7 @@ export interface MappingConfig {
   mappings: Record<string, string>;
   typeTransformations?: Record<string, MappingConfigTypeTransformation>;
   transformations?: Record<string, MappingConfigTransformation>;
+  valueConversions?: Record<string, Record<string, string>>;
 }
 
 export interface ColumnMapping {
@@ -58,6 +59,7 @@ export function exportMappingConfig(options: ExportMappingOptions): MappingConfi
   const mappingsObj: Record<string, string> = {};
   const typeTransformationsObj: Record<string, MappingConfigTypeTransformation> = {};
   const transformationsObj: Record<string, MappingConfigTransformation> = {};
+  const valueConversionsObj: Record<string, Record<string, string>> = {};
 
   for (const m of mappings) {
     if (!m.include) continue;
@@ -71,6 +73,19 @@ export function exportMappingConfig(options: ExportMappingOptions): MappingConfi
     // Include value transformation if defined
     if (m.transformation) {
       transformationsObj[m.sourceColumn] = m.transformation;
+    }
+
+    // Include value conversions if defined
+    if (m.conversions.length > 0) {
+      const convMap: Record<string, string> = {};
+      for (const conv of m.conversions) {
+        if (conv.sourceValue) {
+          convMap[conv.sourceValue] = conv.targetValue;
+        }
+      }
+      if (Object.keys(convMap).length > 0) {
+        valueConversionsObj[m.sourceColumn] = convMap;
+      }
     }
   }
 
@@ -88,6 +103,10 @@ export function exportMappingConfig(options: ExportMappingOptions): MappingConfi
 
   if (Object.keys(transformationsObj).length > 0) {
     config.transformations = transformationsObj;
+  }
+
+  if (Object.keys(valueConversionsObj).length > 0) {
+    config.valueConversions = valueConversionsObj;
   }
 
   return config;

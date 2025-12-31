@@ -16,6 +16,7 @@ A web-based CSV column mapping and transformation tool built with Deno Fresh.
   - `uppercase` / `lowercase` - Case conversion
   - `trim` - Remove whitespace
   - `date` - Date formatting with configurable source/target formats
+- **Value Conversions**: Map specific values to other values (e.g., `Mr` → `male`, `Ms` → `female`)
 - **Number Conversion**: Configurable decimal separator (period or comma), thousand separators automatically removed
 - **Import/Export**: Save and load mapping configurations as JSON
 
@@ -35,6 +36,9 @@ A web-based CSV column mapping and transformation tool built with Deno Fresh.
   },
   "transformations": {
     "column": "uppercase | lowercase | trim | date | date:sourceFormat | date:sourceFormat:targetFormat"
+  },
+  "valueConversions": {
+    "column": { "sourceValue": "targetValue" }
   }
 }
 ```
@@ -72,6 +76,33 @@ A web-based CSV column mapping and transformation tool built with Deno Fresh.
 
 Invalid dates output an empty string.
 
+### Value Conversions
+
+Map specific input values to output values. Matching is case-insensitive.
+
+```json
+{
+  "valueConversions": {
+    "title": {
+      "Mr": "male",
+      "Ms": "female",
+      "Mrs": "female"
+    },
+    "status": {
+      "A": "Active",
+      "I": "Inactive",
+      "P": "Pending"
+    }
+  }
+}
+```
+
+| Input | Output |
+|-------|--------|
+| `Mr` | `male` |
+| `ms` | `female` |
+| `MRS` | `female` |
+
 ### Number Parsing
 
 Numbers are parsed based on the configured decimal separator:
@@ -82,6 +113,28 @@ Numbers are parsed based on the configured decimal separator:
 | `,` (Comma) | `1.234,56` | `1234.56` |
 
 Thousand separators are always removed. Output uses `.` as decimal separator.
+
+## Examples
+
+The `static/examples/` directory contains example CSV files with matching mapping configurations:
+
+| Example | Description |
+|---------|-------------|
+| `employees` | Employee data with EU number format (`,` decimal), date conversion (`dd/MM/yyyy` → `yyyy-MM-dd`), and title to gender mapping (`Mr` → `male`) |
+| `products` | Product catalog with US number format (`.` decimal) and availability conversion (`yes`/`no` → `true`/`false`) |
+
+Load examples directly from the UI using the "Load example" dropdown.
+
+### Example Structure
+
+```
+static/examples/
+├── index.json           # Example registry
+├── employees.csv        # Employee CSV data
+├── employees.mapping.json
+├── products.csv         # Product CSV data
+└── products.mapping.json
+```
 
 ## Usage
 
