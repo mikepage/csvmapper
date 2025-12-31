@@ -1,0 +1,16 @@
+[
+  {
+    "id": "employees",
+    "name": "Employees",
+    "description": "Employee data with EU number format, date conversion, and title to gender mapping",
+    "csv": "employees.csv",
+    "mapping": "employees.mapping.json"
+  },
+  {
+    "id": "products",
+    "name": "Products",
+    "description": "Product catalog with US number format and availability conversion",
+    "csv": "products.csv",
+    "mapping": "products.mapping.json"
+  }
+]
