@@ -1,4 +1,7 @@
 import { useSignal, type Signal } from "@preact/signals";
+
+const EXAMPLES_SCHEMA_URL = "https://csv-import-formatter-schemas.mikepage.deno.net/schema/examples.json";
+
 import {
   type ColumnMapping,
   type DataType,
@@ -310,7 +313,11 @@ export default function ImportSchema({
             </button>
           </div>
           <button
-            onClick={() => handleImportFromUrl("https://csv-import-formatter-schemas.mikepage.deno.net/examples.json")}
+            onClick={() => {
+              const input = document.getElementById("import-json-url") as HTMLInputElement;
+              input.value = EXAMPLES_SCHEMA_URL;
+              handleImportFromUrl(EXAMPLES_SCHEMA_URL);
+            }}
             class="text-xs text-blue-600 hover:text-blue-800 hover:underline"
           >
             Load examples collection
