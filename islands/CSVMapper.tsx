@@ -1,6 +1,6 @@
 import { useSignal, useComputed, useSignalEffect } from "@preact/signals";
-import { format as formatDate, parse as parseDate } from "@std/datetime";
 import { detectAndDecodeText } from "../utils/encoding.ts";
+import { formatDateAutoDetect, transformDate } from "../utils/date.ts";
 import {
   detectDelimiter,
   DELIMITERS,
@@ -102,48 +102,6 @@ function applyTransformation(value: string, transformation?: string): string {
       }
       return value;
   }
-}
-
-// Common date formats for auto-detection (EU formats only)
-const DATE_FORMATS = [
-  "yyyy-MM-dd",
-  "dd/MM/yyyy",
-  "dd-MM-yyyy",
-  "dd.MM.yyyy",
-  "yyyy/MM/dd",
-];
-
-function tryParseDate(value: string, format: string): Date | null {
-  if (!value || !format) return null;
-  try {
-    return parseDate(value, format);
-  } catch {
-    return null;
-  }
-}
-
-function transformDate(value: string, sourceFormat: string, targetFormat: string): string {
-  const date = tryParseDate(value, sourceFormat);
-  if (!date) return "";
-  return formatDate(date, targetFormat);
-}
-
-function parseDateAutoDetect(value: string): Date | null {
-  if (!value) return null;
-
-  // Try each EU format until one works
-  for (const format of DATE_FORMATS) {
-    const date = tryParseDate(value, format);
-    if (date) return date;
-  }
-
-  return null;
-}
-
-function formatDateAutoDetect(value: string, targetFormat: string): string {
-  const date = parseDateAutoDetect(value);
-  if (!date) return "";
-  return formatDate(date, targetFormat);
 }
 
 function generateOutputCSV(
