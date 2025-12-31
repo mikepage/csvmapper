@@ -4,6 +4,7 @@ import {
   detectDelimiter,
   DELIMITERS,
   parseCSV,
+  stringifyCSV,
   type Delimiter,
   type ParsedCSV,
 } from "../utils/csv.ts";
@@ -31,32 +32,26 @@ function generateOutputCSV(
   const includedMappings = mappings.filter((m) => m.include);
   if (includedMappings.length === 0) return "";
 
-  const headerLine = includedMappings.map((m) => m.targetColumn).join(delimiter);
-  const dataLines = parsedCSV.rows.map((row) => {
-    return includedMappings
-      .map((mapping) => {
-        const colIndex = parsedCSV.headers.indexOf(mapping.sourceColumn);
-        if (colIndex === -1) return "";
-        const value = row[colIndex] || "";
-        const converted = transformValue(
-          value,
-          mapping.sourceType,
-          mapping.conversions,
-          decimalSeparator
-        );
-        const transformed = applyTransformation(converted, mapping.transformation);
-        const output = mapping.sourceType === "boolean"
-          ? (transformed === "true" ? "1" : transformed === "false" ? "0" : transformed)
-          : transformed;
-        if (output.includes(delimiter) || output.includes('"')) {
-          return `"${output.replace(/"/g, '""')}"`;
-        }
-        return output;
-      })
-      .join(delimiter);
+  const headers = includedMappings.map((m) => m.targetColumn);
+  const rows = parsedCSV.rows.map((row) => {
+    return includedMappings.map((mapping) => {
+      const colIndex = parsedCSV.headers.indexOf(mapping.sourceColumn);
+      if (colIndex === -1) return "";
+      const value = row[colIndex] || "";
+      const converted = transformValue(
+        value,
+        mapping.sourceType,
+        mapping.conversions,
+        decimalSeparator
+      );
+      const transformed = applyTransformation(converted, mapping.transformation);
+      return mapping.sourceType === "boolean"
+        ? (transformed === "true" ? "1" : transformed === "false" ? "0" : transformed)
+        : transformed;
+    });
   });
 
-  return [headerLine, ...dataLines].join("\n");
+  return stringifyCSV(headers, rows, delimiter);
 }
 
 export default function CSVImportFormatter() {
