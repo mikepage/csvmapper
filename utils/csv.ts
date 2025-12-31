@@ -88,6 +88,8 @@ export function stringifyCSV(
 ): string {
   if (headers.length === 0) return "";
 
-  const data = [headers, ...rows];
-  return stringify(data, { separator: delimiter, headers: false }).trimEnd();
+  const data = rows.map((row) =>
+    Object.fromEntries(headers.map((h, i) => [h, row[i] ?? ""]))
+  );
+  return stringify(data, { columns: headers, separator: delimiter }).trimEnd();
 }
