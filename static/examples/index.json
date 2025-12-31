@@ -2,14 +2,14 @@
   {
     "id": "employees",
     "name": "Employees",
-    "description": "Employee data with EU number format, date conversion, and title to gender mapping",
+    "description": "Employee data with EU number format (1.234,56), EU date format (dd/MM/yyyy → yyyy-MM-dd), and title to gender mapping",
     "csv": "employees.csv",
     "mapping": "employees.mapping.json"
   },
   {
     "id": "products",
     "name": "Products",
-    "description": "Product catalog with US number format and availability conversion",
+    "description": "Product catalog with US number format (1,234.56), ISO date (yyyy-MM-dd), and availability conversion",
     "csv": "products.csv",
     "mapping": "products.mapping.json"
   }

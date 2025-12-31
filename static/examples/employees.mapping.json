@@ -20,7 +20,7 @@
   "transformations": {
     "name": "uppercase",
     "department": "lowercase",
-    "start_date": "date:dd/MM/yyyy:yyyy-MM-dd"
+    "start_date": "date"
   },
   "valueConversions": {
     "title": {

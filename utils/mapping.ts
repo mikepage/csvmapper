@@ -4,7 +4,7 @@ import type { Delimiter } from "./csv.ts";
  * Data types based on JSON Schema
  * @see https://json-schema.org/understanding-json-schema/reference
  */
-export type DataType = "string" | "integer" | "number" | "boolean";
+export type DataType = "" | "string" | "integer" | "number" | "boolean";
 
 /**
  * Decimal separator for number parsing
@@ -65,8 +65,8 @@ export function exportMappingConfig(options: ExportMappingOptions): MappingConfi
     if (!m.include) continue;
     mappingsObj[m.sourceColumn] = m.targetColumn;
 
-    // Only include type transformation if type is not string (default)
-    if (m.sourceType !== "string") {
+    // Only include type transformation if explicitly set (not empty or string)
+    if (m.sourceType && m.sourceType !== "string") {
       typeTransformationsObj[m.sourceColumn] = m.sourceType;
     }
 

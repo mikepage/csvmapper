@@ -20,7 +20,7 @@
   "transformations": {
     "name": "trim",
     "category": "uppercase",
-    "last_updated": "date:yyyy-MM-dd:yyyy-MM-dd"
+    "last_updated": "date"
   },
   "valueConversions": {
     "available": {

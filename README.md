@@ -59,9 +59,20 @@ A web-based CSV column mapping and transformation tool built with Deno Fresh.
 | `uppercase` | Convert to uppercase | `hello` → `HELLO` |
 | `lowercase` | Convert to lowercase | `HELLO` → `hello` |
 | `trim` | Remove whitespace | `  hello  ` → `hello` |
-| `date` | Format date (default yyyy-MM-dd) | `15/01/2024` → `2024-01-15` |
-| `date:sourceFormat` | Parse with source format | `date:dd/MM/yyyy` |
-| `date:sourceFormat:targetFormat` | Parse and format | `date:dd/MM/yyyy:yyyy-MM-dd` |
+| `date` | Auto-detect input, output yyyy-MM-dd | `15/01/2024` → `2024-01-15` |
+| `date:targetFormat` | Auto-detect input, custom output | `date:dd/MM/yyyy` |
+| `date:sourceFormat:targetFormat` | Explicit source and target | `date:MM/dd/yyyy:yyyy-MM-dd` |
+
+#### Auto-detected Date Formats
+
+The following input formats are automatically detected:
+- `yyyy-MM-dd` (ISO)
+- `dd/MM/yyyy`
+- `MM/dd/yyyy`
+- `dd-MM-yyyy`
+- `MM-dd-yyyy`
+- `dd.MM.yyyy`
+- `yyyy/MM/dd`
 
 #### Date Format Tokens
 
@@ -120,8 +131,8 @@ The `static/examples/` directory contains example CSV files with matching mappin
 
 | Example | Description |
 |---------|-------------|
-| `employees` | Employee data with EU number format (`,` decimal), date conversion (`dd/MM/yyyy` → `yyyy-MM-dd`), and title to gender mapping (`Mr` → `male`) |
-| `products` | Product catalog with US number format (`.` decimal) and availability conversion (`yes`/`no` → `true`/`false`) |
+| `employees` | EU format: numbers `1.234,56`, dates `dd/MM/yyyy` → `yyyy-MM-dd`, title → gender (`Mr` → `male`) |
+| `products` | US format: numbers `1,234.56`, dates `yyyy-MM-dd`, availability (`yes`/`no` → `1`/`0`) |
 
 Load examples directly from the UI using the "Load example" dropdown.
 

@@ -34,26 +34,6 @@ interface Example {
   mapping: string;
 }
 
-function inferType(values: string[]): DataType {
-  const nonEmpty = values.filter((v) => v.trim() !== "");
-  if (nonEmpty.length === 0) return "string";
-
-  const allIntegers = nonEmpty.every((v) => /^-?\d+$/.test(v));
-  if (allIntegers) return "integer";
-
-  const allDecimals = nonEmpty.every((v) => /^-?\d+\.?\d*$/.test(v));
-  if (allDecimals) return "number";
-
-  const allBooleans = nonEmpty.every((v) =>
-    ["true", "false", "0", "1", "yes", "no", "t", "f", "y", "n"].includes(
-      v.toLowerCase()
-    )
-  );
-  if (allBooleans) return "boolean";
-
-  return "string";
-}
-
 function convertValue(
   value: string,
   sourceType: DataType,
@@ -98,30 +78,50 @@ function applyTransformation(value: string, transformation?: string): string {
     case "trim":
       return value.trim();
     case "date":
-      return transformDate(value, "yyyy-MM-dd", "yyyy-MM-dd");
+      // Auto-detect input format, output as yyyy-MM-dd
+      return formatDateAutoDetect(value, "yyyy-MM-dd");
     default:
       // Handle dateFormat:FORMAT pattern (legacy, auto-detect source)
       if (transformation.startsWith("dateFormat:")) {
         const format = transformation.slice(11);
         return formatDateAutoDetect(value, format);
       }
-      // Handle date:sourceFormat or date:sourceFormat:targetFormat
+      // Handle date:targetFormat (auto-detect source) or date:sourceFormat:targetFormat
       if (transformation.startsWith("date:")) {
         const parts = transformation.slice(5).split(":");
-        const sourceFormat = parts[0] || "yyyy-MM-dd";
-        const targetFormat = parts[1] || "yyyy-MM-dd";
-        return transformDate(value, sourceFormat, targetFormat);
+        if (parts.length === 1) {
+          // date:targetFormat - auto-detect source
+          return formatDateAutoDetect(value, parts[0]);
+        } else {
+          // date:sourceFormat:targetFormat - explicit source format
+          const sourceFormat = parts[0] || "yyyy-MM-dd";
+          const targetFormat = parts[1] || "yyyy-MM-dd";
+          return transformDate(value, sourceFormat, targetFormat);
+        }
       }
       return value;
   }
 }
+
+// Common date formats for auto-detection
+const DATE_FORMATS = [
+  "yyyy-MM-dd",
+  "dd/MM/yyyy",
+  "MM/dd/yyyy",
+  "dd-MM-yyyy",
+  "MM-dd-yyyy",
+  "dd.MM.yyyy",
+  "yyyy/MM/dd",
+];
 
 function parseDate(value: string, format: string): Date | null {
   if (!value || !format) return null;
 
   // Build regex from format
   const formatParts: { token: string; index: number }[] = [];
-  let regex = format;
+
+  // First escape special regex chars in the format string
+  let regex = format.replace(/[.*+?^$|[\]\\]/g, "\\$&");
 
   // Order matters - replace longer tokens first
   const tokens = [
@@ -140,11 +140,6 @@ function parseDate(value: string, format: string): Date | null {
       regex = regex.replace(token, pattern);
     }
   }
-
-  // Escape special regex chars except our groups
-  regex = regex.replace(/[.*+?^${}()|[\]\\]/g, (char) =>
-    char === "(" || char === ")" || char === "\\" ? char : "\\" + char
-  );
 
   const match = value.match(new RegExp("^" + regex + "$"));
   if (!match) return null;
@@ -191,27 +186,25 @@ function transformDate(value: string, sourceFormat: string, targetFormat: string
   return formatDate(date, targetFormat);
 }
 
+function parseDateAutoDetect(value: string): Date | null {
+  if (!value) return null;
+
+  // Try each common format until one works
+  for (const format of DATE_FORMATS) {
+    const date = parseDate(value, format);
+    if (date) return date;
+  }
+
+  // Try native Date parsing as fallback (handles ISO formats with time)
+  const nativeDate = new Date(value);
+  if (!isNaN(nativeDate.getTime())) return nativeDate;
+
+  return null;
+}
+
 function formatDateAutoDetect(value: string, targetFormat: string): string {
-  // Try to parse common date formats
-  let date: Date | null = null;
-
-  // ISO format: yyyy-MM-dd or yyyy-MM-ddTHH:mm:ss
-  if (/^\d{4}-\d{2}-\d{2}/.test(value)) {
-    date = new Date(value);
-  }
-  // Format: dd/MM/yyyy
-  else if (/^\d{2}\/\d{2}\/\d{4}$/.test(value)) {
-    const [day, month, year] = value.split("/");
-    date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
-  }
-  // Format: dd-MM-yyyy
-  else if (/^\d{2}-\d{2}-\d{4}$/.test(value)) {
-    const [day, month, year] = value.split("-");
-    date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
-  }
-
-  if (!date || isNaN(date.getTime())) return "";
-
+  const date = parseDateAutoDetect(value);
+  if (!date) return "";
   return formatDate(date, targetFormat);
 }
 
@@ -299,14 +292,9 @@ export default function CSVMapper() {
     parsedCSV.value = parsed;
 
     const newMappings: ColumnMapping[] = parsed.headers.map((header) => {
-      const columnValues = parsed.rows.map(
-        (row) => row[parsed.headers.indexOf(header)] || ""
-      );
-      const detectedType = inferType(columnValues);
-
       return {
         sourceColumn: header,
-        sourceType: detectedType,
+        sourceType: "",
         targetColumn: header,
         conversions: [],
         include: true,
@@ -324,14 +312,9 @@ export default function CSVMapper() {
       parsedCSV.value = parsed;
 
       const newMappings: ColumnMapping[] = parsed.headers.map((header) => {
-        const columnValues = parsed.rows.map(
-          (row) => row[parsed.headers.indexOf(header)] || ""
-        );
-        const detectedType = inferType(columnValues);
-
         return {
           sourceColumn: header,
-          sourceType: detectedType,
+          sourceType: "",
           targetColumn: header,
           conversions: [],
           include: true,
@@ -365,13 +348,9 @@ export default function CSVMapper() {
 
       // Create initial mappings
       const initialMappings: ColumnMapping[] = parsed.headers.map((header) => {
-        const columnValues = parsed.rows.map(
-          (row) => row[parsed.headers.indexOf(header)] || ""
-        );
-        const detectedType = inferType(columnValues);
         return {
           sourceColumn: header,
-          sourceType: detectedType,
+          sourceType: "",
           targetColumn: header,
           conversions: [],
           include: true,
@@ -642,7 +621,7 @@ export default function CSVMapper() {
 
       return {
         sourceColumn: header,
-        sourceType: (transformationType || "string") as DataType,
+        sourceType: (transformationType || "") as DataType,
         targetColumn,
         conversions,
         transformation,
@@ -945,7 +924,7 @@ export default function CSVMapper() {
     "column": "string | integer | number | boolean"
   },
   "transformations": {
-    "column": "uppercase | lowercase | trim | date | date:sourceFormat | date:sourceFormat:targetFormat"
+    "column": "uppercase | lowercase | trim | date | date:targetFormat | date:sourceFormat:targetFormat"
   },
   "valueConversions": {
     "column": { "Mr": "male", "Ms": "female" }
@@ -955,8 +934,9 @@ export default function CSVMapper() {
 boolean outputs as 1/0 in CSV
 number/integer: thousand separators removed, decimal separator configurable
 valueConversions: map specific values to other values (case-insensitive)
+date: auto-detects input format (yyyy-MM-dd, dd/MM/yyyy, MM/dd/yyyy, etc.)
 date tokens: yyyy, MM, dd, HH, mm, ss
-date examples: date, date:dd/MM/yyyy, date:dd/MM/yyyy:yyyy-MM-dd
+date examples: date (auto → yyyy-MM-dd), date:dd/MM/yyyy (auto → custom)
 invalid dates output empty string`}</pre>
               </details>
             </div>
@@ -1024,6 +1004,7 @@ invalid dates output empty string`}</pre>
                           class="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
                           disabled={!mapping.include}
                         >
+                          <option value="">—</option>
                           <option value="string">string</option>
                           <option value="integer">integer</option>
                           <option value="number">number</option>
