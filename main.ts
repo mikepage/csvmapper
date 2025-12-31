@@ -5,6 +5,25 @@ export const app = new App<State>();
 
 app.use(staticFiles());
 
+// CORS middleware - allow specific origins
+const allowedOrigins = [
+  "http://127.0.0.1",
+  "http://localhost",
+  "https://csvmapper.mikepage.deno.net",
+];
+
+app.use(async (ctx) => {
+  const origin = ctx.req.headers.get("Origin");
+  const res = await ctx.next();
+
+  if (origin && allowedOrigins.some((allowed) => origin.startsWith(allowed))) {
+    res.headers.set("Access-Control-Allow-Origin", origin);
+    res.headers.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.headers.set("Access-Control-Allow-Headers", "Content-Type");
+  }
+  return res;
+});
+
 // Pass a shared value from a middleware
 app.use(async (ctx) => {
   ctx.state.shared = "hello";
