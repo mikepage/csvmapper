@@ -7,28 +7,31 @@ import {
   type Delimiter,
   type ParsedCSV,
 } from "../utils/csv.ts";
+import {
+  exportMappingConfig,
+  serializeMappingConfig,
+  parseNumber,
+  formatNumber,
+  type ColumnMapping,
+  type Conversion,
+  type DataType,
+  type DecimalSeparator,
+  type MappingConfig,
+  type MappingConfigTypeTransformation,
+  type MappingConfigTransformation,
+} from "../utils/mapping.ts";
 
-type DataType = "string" | "integer" | "decimal" | "date" | "boolean" | "char";
+const DECIMAL_SEPARATORS: { separator: DecimalSeparator; label: string }[] = [
+  { separator: ".", label: "Period (1,234.56)" },
+  { separator: ",", label: "Comma (1.234,56)" },
+];
 
-interface Conversion {
-  sourceValue: string;
-  targetValue: string;
-}
-
-interface ColumnMapping {
-  sourceColumn: string;
-  sourceType: DataType;
-  targetColumn: string;
-  conversions: Conversion[];
-  include: boolean;
-}
-
-const SAMPLE_CSV = `id,name,active,score,created,grade
-1,John Doe,T,85.5,2024-01-15,A
-2,Jane Smith,F,92.3,2024-02-20,B
-3,Bob Wilson,T,78.0,2024-03-10,C
-4,Alice Brown,F,88.7,2024-04-05,A
-5,Charlie Davis,T,95.2,2024-05-12,B`;
+const SAMPLE_CSV = `id;name;active;score;salary;created;grade
+1;John Doe;T;85,5;1.234,56;15/01/2024;A
+2;Jane Smith;F;92,3;2.500,00;20/02/2024;B
+3;Bob Wilson;T;78,0;999,99;10/03/2024;C
+4;Alice Brown;F;88,7;3.150,25;05/04/2024;A
+5;Charlie Davis;T;95,2;12.000,00;12/05/2024;B`;
 
 function inferType(values: string[]): DataType {
   const nonEmpty = values.filter((v) => v.trim() !== "");
@@ -38,12 +41,7 @@ function inferType(values: string[]): DataType {
   if (allIntegers) return "integer";
 
   const allDecimals = nonEmpty.every((v) => /^-?\d+\.?\d*$/.test(v));
-  if (allDecimals) return "decimal";
-
-  const allDates = nonEmpty.every(
-    (v) => /^\d{4}-\d{2}-\d{2}/.test(v) || /^\d{2}\/\d{2}\/\d{4}/.test(v)
-  );
-  if (allDates) return "date";
+  if (allDecimals) return "number";
 
   const allBooleans = nonEmpty.every((v) =>
     ["true", "false", "0", "1", "yes", "no", "t", "f", "y", "n"].includes(
@@ -52,16 +50,14 @@ function inferType(values: string[]): DataType {
   );
   if (allBooleans) return "boolean";
 
-  const allChars = nonEmpty.every((v) => v.length === 1);
-  if (allChars) return "char";
-
   return "string";
 }
 
 function convertValue(
   value: string,
   sourceType: DataType,
-  conversions: Conversion[]
+  conversions: Conversion[],
+  decimalSeparator: DecimalSeparator = "."
 ): string {
   for (const conv of conversions) {
     if (conv.sourceValue.toLowerCase() === value.toLowerCase()) {
@@ -72,23 +68,157 @@ function convertValue(
   switch (sourceType) {
     case "boolean": {
       const lower = value.toLowerCase();
-      if (["true", "t", "yes", "y", "1"].includes(lower)) return "1";
-      if (["false", "f", "no", "n", "0"].includes(lower)) return "0";
+      if (["true", "t", "yes", "y", "1"].includes(lower)) return "true";
+      if (["false", "f", "no", "n", "0"].includes(lower)) return "false";
       return value;
     }
-    case "integer":
-      return parseInt(value, 10).toString() || value;
-    case "decimal":
-      return parseFloat(value).toString() || value;
+    case "integer": {
+      const num = parseNumber(value, decimalSeparator);
+      if (isNaN(num)) return value;
+      return Math.round(num).toString();
+    }
+    case "number": {
+      const num = parseNumber(value, decimalSeparator);
+      return formatNumber(num) || value;
+    }
     default:
       return value;
   }
 }
 
+function applyTransformation(value: string, transformation?: string): string {
+  if (!transformation) return value;
+
+  switch (transformation) {
+    case "uppercase":
+      return value.toUpperCase();
+    case "lowercase":
+      return value.toLowerCase();
+    case "trim":
+      return value.trim();
+    case "date":
+      return transformDate(value, "yyyy-MM-dd", "yyyy-MM-dd");
+    default:
+      // Handle dateFormat:FORMAT pattern (legacy, auto-detect source)
+      if (transformation.startsWith("dateFormat:")) {
+        const format = transformation.slice(11);
+        return formatDateAutoDetect(value, format);
+      }
+      // Handle date:sourceFormat or date:sourceFormat:targetFormat
+      if (transformation.startsWith("date:")) {
+        const parts = transformation.slice(5).split(":");
+        const sourceFormat = parts[0] || "yyyy-MM-dd";
+        const targetFormat = parts[1] || "yyyy-MM-dd";
+        return transformDate(value, sourceFormat, targetFormat);
+      }
+      return value;
+  }
+}
+
+function parseDate(value: string, format: string): Date | null {
+  if (!value || !format) return null;
+
+  // Build regex from format
+  const formatParts: { token: string; index: number }[] = [];
+  let regex = format;
+
+  // Order matters - replace longer tokens first
+  const tokens = [
+    { token: "yyyy", pattern: "(\\d{4})" },
+    { token: "MM", pattern: "(\\d{2})" },
+    { token: "dd", pattern: "(\\d{2})" },
+    { token: "HH", pattern: "(\\d{2})" },
+    { token: "mm", pattern: "(\\d{2})" },
+    { token: "ss", pattern: "(\\d{2})" },
+  ];
+
+  let groupIndex = 1;
+  for (const { token, pattern } of tokens) {
+    if (regex.includes(token)) {
+      formatParts.push({ token, index: groupIndex++ });
+      regex = regex.replace(token, pattern);
+    }
+  }
+
+  // Escape special regex chars except our groups
+  regex = regex.replace(/[.*+?^${}()|[\]\\]/g, (char) =>
+    char === "(" || char === ")" || char === "\\" ? char : "\\" + char
+  );
+
+  const match = value.match(new RegExp("^" + regex + "$"));
+  if (!match) return null;
+
+  let year = 1970, month = 0, day = 1, hours = 0, minutes = 0, seconds = 0;
+
+  for (const { token, index } of formatParts) {
+    const val = parseInt(match[index], 10);
+    switch (token) {
+      case "yyyy": year = val; break;
+      case "MM": month = val - 1; break;
+      case "dd": day = val; break;
+      case "HH": hours = val; break;
+      case "mm": minutes = val; break;
+      case "ss": seconds = val; break;
+    }
+  }
+
+  const date = new Date(year, month, day, hours, minutes, seconds);
+  if (isNaN(date.getTime())) return null;
+
+  // Validate the date components match (catch invalid dates like Feb 30)
+  if (date.getFullYear() !== year || date.getMonth() !== month || date.getDate() !== day) {
+    return null;
+  }
+
+  return date;
+}
+
+function formatDate(date: Date, format: string): string {
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  return format
+    .replace("yyyy", date.getFullYear().toString())
+    .replace("MM", pad(date.getMonth() + 1))
+    .replace("dd", pad(date.getDate()))
+    .replace("HH", pad(date.getHours()))
+    .replace("mm", pad(date.getMinutes()))
+    .replace("ss", pad(date.getSeconds()));
+}
+
+function transformDate(value: string, sourceFormat: string, targetFormat: string): string {
+  const date = parseDate(value, sourceFormat);
+  if (!date) return "";
+  return formatDate(date, targetFormat);
+}
+
+function formatDateAutoDetect(value: string, targetFormat: string): string {
+  // Try to parse common date formats
+  let date: Date | null = null;
+
+  // ISO format: yyyy-MM-dd or yyyy-MM-ddTHH:mm:ss
+  if (/^\d{4}-\d{2}-\d{2}/.test(value)) {
+    date = new Date(value);
+  }
+  // Format: dd/MM/yyyy
+  else if (/^\d{2}\/\d{2}\/\d{4}$/.test(value)) {
+    const [day, month, year] = value.split("/");
+    date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+  }
+  // Format: dd-MM-yyyy
+  else if (/^\d{2}-\d{2}-\d{4}$/.test(value)) {
+    const [day, month, year] = value.split("-");
+    date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+  }
+
+  if (!date || isNaN(date.getTime())) return "";
+
+  return formatDate(date, targetFormat);
+}
+
 function generateOutputCSV(
   parsedCSV: ParsedCSV,
   mappings: ColumnMapping[],
-  delimiter: Delimiter
+  delimiter: Delimiter,
+  decimalSeparator: DecimalSeparator
 ): string {
   const includedMappings = mappings.filter((m) => m.include);
   if (includedMappings.length === 0) return "";
@@ -103,12 +233,18 @@ function generateOutputCSV(
         const converted = convertValue(
           value,
           mapping.sourceType,
-          mapping.conversions
+          mapping.conversions,
+          decimalSeparator
         );
-        if (converted.includes(delimiter) || converted.includes('"')) {
-          return `"${converted.replace(/"/g, '""')}"`;
+        const transformed = applyTransformation(converted, mapping.transformation);
+        // Convert boolean to binary for CSV output
+        const output = mapping.sourceType === "boolean"
+          ? (transformed === "true" ? "1" : transformed === "false" ? "0" : transformed)
+          : transformed;
+        if (output.includes(delimiter) || output.includes('"')) {
+          return `"${output.replace(/"/g, '""')}"`;
         }
-        return converted;
+        return output;
       })
       .join(delimiter);
   });
@@ -125,10 +261,15 @@ export default function CSVMapper() {
   const encodingError = useSignal<string | null>(null);
   const inputDelimiter = useSignal<Delimiter>(";");
   const outputDelimiter = useSignal<Delimiter>(";");
+  const decimalSeparator = useSignal<DecimalSeparator>(",");
+  const importJsonText = useSignal("");
+  const importJsonUrl = useSignal("");
+  const importError = useSignal<string | null>(null);
+  const importSuccess = useSignal<string | null>(null);
 
   const outputCSV = useComputed(() => {
     if (parsedCSV.value.headers.length === 0) return "";
-    return generateOutputCSV(parsedCSV.value, mappings.value, outputDelimiter.value);
+    return generateOutputCSV(parsedCSV.value, mappings.value, outputDelimiter.value, decimalSeparator.value);
   });
 
   const handleParseCSV = () => {
@@ -269,6 +410,212 @@ export default function CSVMapper() {
     navigator.clipboard.writeText(outputCSV.value);
   };
 
+  const getMappingConfig = (): MappingConfig => {
+    return exportMappingConfig({
+      mappings: mappings.value,
+      inputDelimiter: inputDelimiter.value,
+      outputDelimiter: outputDelimiter.value,
+      decimalSeparator: decimalSeparator.value,
+    });
+  };
+
+  const downloadMappingJson = () => {
+    const config = getMappingConfig();
+    const json = serializeMappingConfig(config);
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "mapping.json";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const copyMappingJson = () => {
+    const config = getMappingConfig();
+    const json = serializeMappingConfig(config);
+    navigator.clipboard.writeText(json);
+  };
+
+  const validateAndApplyMapping = (config: unknown): boolean => {
+    importError.value = null;
+    importSuccess.value = null;
+
+    if (!config || typeof config !== "object") {
+      importError.value = "Invalid JSON: expected an object";
+      return false;
+    }
+
+    const obj = config as Record<string, unknown>;
+
+    if (obj.version !== "1.0") {
+      importError.value = `Unsupported version: ${obj.version}. Expected "1.0"`;
+      return false;
+    }
+
+    if (!obj.mappings || typeof obj.mappings !== "object" || Array.isArray(obj.mappings)) {
+      importError.value = "Invalid mapping: 'mappings' must be an object";
+      return false;
+    }
+
+    const mappingsObj = obj.mappings as Record<string, unknown>;
+    const validTypes = ["string", "integer", "number", "boolean"];
+    const validDelimiters = [",", ";", "\t"];
+
+    // Validate mappings object
+    for (const [source, target] of Object.entries(mappingsObj)) {
+      if (typeof target !== "string") {
+        importError.value = `Mapping '${source}': target must be a string`;
+        return false;
+      }
+    }
+
+    // Validate typeTransformations if present
+    if (obj.typeTransformations !== undefined) {
+      if (typeof obj.typeTransformations !== "object" || Array.isArray(obj.typeTransformations)) {
+        importError.value = "Invalid 'typeTransformations': must be an object";
+        return false;
+      }
+
+      const typeTransformationsObj = obj.typeTransformations as Record<string, unknown>;
+      for (const [source, transType] of Object.entries(typeTransformationsObj)) {
+        if (typeof transType !== "string" || !validTypes.includes(transType)) {
+          importError.value = `Type transformation '${source}': must be one of: ${validTypes.join(", ")}`;
+          return false;
+        }
+      }
+    }
+
+    // Validate transformations if present
+    const validTransformations = ["uppercase", "lowercase", "trim", "date"];
+    if (obj.transformations !== undefined) {
+      if (typeof obj.transformations !== "object" || Array.isArray(obj.transformations)) {
+        importError.value = "Invalid 'transformations': must be an object";
+        return false;
+      }
+
+      const transformationsObj = obj.transformations as Record<string, unknown>;
+      for (const [source, trans] of Object.entries(transformationsObj)) {
+        if (typeof trans !== "string") {
+          importError.value = `Transformation '${source}': must be a string`;
+          return false;
+        }
+        // Allow valid transformations, dateFormat:*, or date[:source][:target]
+        const isValid = validTransformations.includes(trans) ||
+          trans.startsWith("dateFormat:") ||
+          trans.startsWith("date:");
+        if (!isValid) {
+          importError.value = `Transformation '${source}': must be one of: ${validTransformations.join(", ")}, dateFormat:FORMAT, or date[:sourceFormat][:targetFormat]`;
+          return false;
+        }
+      }
+    }
+
+    if (obj.inputDelimiter !== undefined && !validDelimiters.includes(obj.inputDelimiter as string)) {
+      importError.value = `Invalid 'inputDelimiter': must be one of: comma, semicolon, tab`;
+      return false;
+    }
+
+    if (obj.outputDelimiter !== undefined && !validDelimiters.includes(obj.outputDelimiter as string)) {
+      importError.value = `Invalid 'outputDelimiter': must be one of: comma, semicolon, tab`;
+      return false;
+    }
+
+    const validDecimalSeparators = [".", ","];
+    if (obj.decimalSeparator !== undefined && !validDecimalSeparators.includes(obj.decimalSeparator as string)) {
+      importError.value = `Invalid 'decimalSeparator': must be one of: . (period), , (comma)`;
+      return false;
+    }
+
+    // Validate that mapping sourceColumns exist in parsed CSV headers
+    if (parsedCSV.value.headers.length === 0) {
+      importError.value = "No CSV loaded. Please parse a CSV file first.";
+      return false;
+    }
+
+    const sourceHeaders = new Set(parsedCSV.value.headers);
+    const missingHeaders: string[] = [];
+    for (const source of Object.keys(mappingsObj)) {
+      if (!sourceHeaders.has(source)) {
+        missingHeaders.push(source);
+      }
+    }
+
+    if (missingHeaders.length > 0) {
+      importError.value = `Mapping references columns not in source CSV: ${missingHeaders.join(", ")}`;
+      return false;
+    }
+
+    // Apply the configuration
+    if (obj.inputDelimiter) {
+      inputDelimiter.value = obj.inputDelimiter as Delimiter;
+    }
+    if (obj.outputDelimiter) {
+      outputDelimiter.value = obj.outputDelimiter as Delimiter;
+    }
+    if (obj.decimalSeparator) {
+      decimalSeparator.value = obj.decimalSeparator as DecimalSeparator;
+    }
+
+    const typeTransformationsObj = (obj.typeTransformations || {}) as Record<string, MappingConfigTypeTransformation>;
+    const transformationsObj = (obj.transformations || {}) as Record<string, MappingConfigTransformation>;
+
+    // Build mappings from parsed CSV headers
+    const newMappings: ColumnMapping[] = parsedCSV.value.headers.map((header) => {
+      const isIncluded = header in mappingsObj;
+      const targetColumn = isIncluded ? (mappingsObj[header] as string) : header;
+      const transformationType = typeTransformationsObj[header];
+      const transformation = transformationsObj[header];
+
+      return {
+        sourceColumn: header,
+        sourceType: (transformationType || "string") as DataType,
+        targetColumn,
+        conversions: [],
+        transformation,
+        include: isIncluded,
+      };
+    });
+
+    mappings.value = newMappings;
+    importSuccess.value = `Imported ${Object.keys(mappingsObj).length} mapping(s)`;
+    return true;
+  };
+
+  const importFromText = () => {
+    try {
+      const config = JSON.parse(importJsonText.value);
+      if (validateAndApplyMapping(config)) {
+        importJsonText.value = "";
+      }
+    } catch {
+      importError.value = "Invalid JSON syntax";
+    }
+  };
+
+  const importFromUrl = async () => {
+    if (!importJsonUrl.value.trim()) {
+      importError.value = "Please enter a URL";
+      return;
+    }
+
+    try {
+      importError.value = null;
+      importSuccess.value = null;
+      const response = await fetch(importJsonUrl.value);
+      if (!response.ok) {
+        importError.value = `Failed to fetch: ${response.status} ${response.statusText}`;
+        return;
+      }
+      const config = await response.json();
+      if (validateAndApplyMapping(config)) {
+        importJsonUrl.value = "";
+      }
+    } catch (err) {
+      importError.value = `Failed to fetch URL: ${err instanceof Error ? err.message : "Unknown error"}`;
+    }
+  };
+
   return (
     <div class="space-y-4">
       {/* CSV Input */}
@@ -334,6 +681,18 @@ export default function CSVMapper() {
             >
               {DELIMITERS.map((d) => (
                 <option key={d.delimiter} value={d.delimiter}>{d.label}</option>
+              ))}
+            </select>
+          </div>
+          <div class="flex items-center gap-2">
+            <label class="text-sm text-gray-600">Decimal separator:</label>
+            <select
+              value={decimalSeparator.value}
+              onChange={(e) => decimalSeparator.value = (e.target as HTMLSelectElement).value as DecimalSeparator}
+              class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              {DECIMAL_SEPARATORS.map((d) => (
+                <option key={d.separator} value={d.separator}>{d.label}</option>
               ))}
             </select>
           </div>
@@ -449,12 +808,10 @@ export default function CSVMapper() {
                           class="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
                           disabled={!mapping.include}
                         >
-                          <option value="string">String</option>
-                          <option value="integer">Integer</option>
-                          <option value="decimal">Decimal</option>
-                          <option value="date">Date</option>
-                          <option value="boolean">Boolean</option>
-                          <option value="char">Char</option>
+                          <option value="string">string</option>
+                          <option value="integer">integer</option>
+                          <option value="number">number</option>
+                          <option value="boolean">boolean</option>
                         </select>
                       </div>
 
@@ -551,7 +908,8 @@ export default function CSVMapper() {
                               const converted = convertValue(
                                 original,
                                 mapping.sourceType,
-                                mapping.conversions
+                                mapping.conversions,
+                                decimalSeparator.value
                               );
                               return (
                                 <div
@@ -581,6 +939,119 @@ export default function CSVMapper() {
               ))}
             </div>
           </div>
+
+          {/* Import/Export Mapping */}
+          <details class="bg-white rounded-lg shadow border border-gray-200">
+            <summary class="px-4 py-3 cursor-pointer text-sm font-medium text-gray-700 hover:bg-gray-50 select-none">
+              Import / Export Mapping Configuration
+            </summary>
+            <div class="px-4 py-4 border-t border-gray-200 space-y-4">
+              {/* Error/Success Messages */}
+              {importError.value && (
+                <div class="p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <div class="text-red-700 text-sm">{importError.value}</div>
+                </div>
+              )}
+              {importSuccess.value && (
+                <div class="p-3 bg-green-50 border border-green-200 rounded-lg">
+                  <div class="text-green-700 text-sm">{importSuccess.value}</div>
+                </div>
+              )}
+
+              {/* Export Section */}
+              <div>
+                <h4 class="text-xs font-medium text-gray-600 uppercase mb-2">Export</h4>
+                <div class="flex gap-2">
+                  <button
+                    onClick={downloadMappingJson}
+                    class="px-3 py-1.5 text-sm bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+                  >
+                    Download JSON
+                  </button>
+                  <button
+                    onClick={copyMappingJson}
+                    class="px-3 py-1.5 text-sm bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+                  >
+                    Copy to Clipboard
+                  </button>
+                </div>
+              </div>
+
+              {/* Import from Text */}
+              <div>
+                <h4 class="text-xs font-medium text-gray-600 uppercase mb-2">Import from JSON</h4>
+                <textarea
+                  value={importJsonText.value}
+                  onInput={(e) => importJsonText.value = (e.target as HTMLTextAreaElement).value}
+                  class="w-full p-2 border border-gray-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder='{"version": "1.0", "mappings": [...]}'
+                  rows={3}
+                />
+                <button
+                  onClick={importFromText}
+                  disabled={!importJsonText.value.trim()}
+                  class={`mt-2 px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                    !importJsonText.value.trim()
+                      ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                      : "bg-blue-600 text-white hover:bg-blue-700"
+                  }`}
+                >
+                  Import from Text
+                </button>
+              </div>
+
+              {/* Import from URL */}
+              <div>
+                <h4 class="text-xs font-medium text-gray-600 uppercase mb-2">Import from URL</h4>
+                <div class="flex gap-2">
+                  <input
+                    type="url"
+                    value={importJsonUrl.value}
+                    onInput={(e) => importJsonUrl.value = (e.target as HTMLInputElement).value}
+                    class="flex-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="https://example.com/mapping.json"
+                  />
+                  <button
+                    onClick={importFromUrl}
+                    disabled={!importJsonUrl.value.trim()}
+                    class={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                      !importJsonUrl.value.trim()
+                        ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                        : "bg-blue-600 text-white hover:bg-blue-700"
+                    }`}
+                  >
+                    Fetch & Import
+                  </button>
+                </div>
+              </div>
+
+              {/* Schema Reference */}
+              <details class="text-xs text-gray-500">
+                <summary class="cursor-pointer hover:text-gray-700">Schema Reference (JSON Schema types)</summary>
+                <pre class="mt-2 p-3 bg-gray-100 rounded-lg overflow-x-auto text-xs">{`{
+  "version": "1.0",
+  "inputDelimiter": "," | ";" | "\\t",
+  "outputDelimiter": "," | ";" | "\\t",
+  "decimalSeparator": "." | ",",
+  "mappings": {
+    "sourceColumn": "targetColumn"
+  },
+  "typeTransformations": {
+    "column": "string | integer | number | boolean"
+  },
+  "transformations": {
+    "column": "uppercase | lowercase | trim | date | date:sourceFormat | date:sourceFormat:targetFormat"
+  }
+}
+
+boolean outputs as 1/0 in CSV
+number/integer: thousand separators removed, decimal separator configurable
+date tokens: yyyy, MM, dd, HH, mm, ss
+date examples: date, date:dd/MM/yyyy, date:dd/MM/yyyy:yyyy-MM-dd
+invalid dates output empty string`}</pre>
+              </details>
+            </div>
+          </details>
         </div>
       )}
 
@@ -647,7 +1118,8 @@ export default function CSVMapper() {
                           const converted = convertValue(
                             value,
                             mapping.sourceType,
-                            mapping.conversions
+                            mapping.conversions,
+                            decimalSeparator.value
                           );
                           return (
                             <td
