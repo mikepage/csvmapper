@@ -1,6 +1,12 @@
 import { useSignal, useComputed } from "@preact/signals";
 import { detectAndDecodeText } from "../utils/encoding.ts";
-import { detectDelimiter, DELIMITERS, type Delimiter } from "../utils/csv.ts";
+import {
+  detectDelimiter,
+  DELIMITERS,
+  parseCSV,
+  type Delimiter,
+  type ParsedCSV,
+} from "../utils/csv.ts";
 
 type DataType = "string" | "integer" | "decimal" | "date" | "boolean" | "char";
 
@@ -17,52 +23,12 @@ interface ColumnMapping {
   include: boolean;
 }
 
-interface ParsedCSV {
-  headers: string[];
-  rows: string[][];
-}
-
 const SAMPLE_CSV = `id,name,active,score,created,grade
 1,John Doe,T,85.5,2024-01-15,A
 2,Jane Smith,F,92.3,2024-02-20,B
 3,Bob Wilson,T,78.0,2024-03-10,C
 4,Alice Brown,F,88.7,2024-04-05,A
 5,Charlie Davis,T,95.2,2024-05-12,B`;
-
-function parseCSV(text: string, delimiter: Delimiter): ParsedCSV {
-  const lines = text.trim().split("\n");
-  if (lines.length === 0) return { headers: [], rows: [] };
-
-  const headers = parseCSVLine(lines[0], delimiter);
-  const rows = lines.slice(1).map((line) => parseCSVLine(line, delimiter));
-
-  return { headers, rows };
-}
-
-function parseCSVLine(line: string, delimiter: Delimiter): string[] {
-  const result: string[] = [];
-  let current = "";
-  let inQuotes = false;
-
-  for (let i = 0; i < line.length; i++) {
-    const char = line[i];
-    if (char === '"') {
-      if (inQuotes && line[i + 1] === '"') {
-        current += '"';
-        i++;
-      } else {
-        inQuotes = !inQuotes;
-      }
-    } else if (char === delimiter && !inQuotes) {
-      result.push(current.trim());
-      current = "";
-    } else {
-      current += char;
-    }
-  }
-  result.push(current.trim());
-  return result;
-}
 
 function inferType(values: string[]): DataType {
   const nonEmpty = values.filter((v) => v.trim() !== "");

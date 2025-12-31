@@ -1,3 +1,5 @@
+import { parse } from "@std/csv";
+
 export type Delimiter = "," | ";" | "\t";
 
 export interface DelimiterInfo {
@@ -5,11 +7,41 @@ export interface DelimiterInfo {
   label: string;
 }
 
+export interface ParsedCSV {
+  headers: string[];
+  rows: string[][];
+}
+
 export const DELIMITERS: DelimiterInfo[] = [
   { delimiter: ",", label: "Comma (,)" },
   { delimiter: ";", label: "Semicolon (;)" },
   { delimiter: "\t", label: "Tab" },
 ];
+
+/**
+ * Parse CSV text using @std/csv
+ */
+export function parseCSV(text: string, delimiter: Delimiter): ParsedCSV {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return { headers: [], rows: [] };
+  }
+
+  const records = parse(trimmed, {
+    separator: delimiter,
+    skipFirstRow: false,
+    lazyQuotes: true,
+  }) as string[][];
+
+  if (records.length === 0) {
+    return { headers: [], rows: [] };
+  }
+
+  const headers = records[0];
+  const rows = records.slice(1);
+
+  return { headers, rows };
+}
 
 export function detectDelimiter(text: string): Delimiter {
   const lines = text.trim().split("\n").slice(0, 10); // Check first 10 lines
