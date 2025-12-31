@@ -21,6 +21,7 @@
   "imports": {
     "@/": "./",
     "@std/csv": "jsr:@std/csv@^1.0.6",
+    "@std/datetime": "jsr:@std/datetime@^0.225.6",
     "fresh": "jsr:@fresh/core@^2.2.0",
     "preact": "npm:preact@^10.27.2",
     "@preact/signals": "npm:@preact/signals@^2.5.0",

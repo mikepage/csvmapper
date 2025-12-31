@@ -1,4 +1,5 @@
 import { useSignal, useComputed, useSignalEffect } from "@preact/signals";
+import { format as formatDate, parse as parseDate } from "@std/datetime";
 import { detectAndDecodeText } from "../utils/encoding.ts";
 import {
   detectDelimiter,
@@ -112,81 +113,17 @@ const DATE_FORMATS = [
   "yyyy/MM/dd",
 ];
 
-function parseDate(value: string, format: string): Date | null {
+function tryParseDate(value: string, format: string): Date | null {
   if (!value || !format) return null;
-
-  const tokens = [
-    { token: "yyyy", pattern: "(\\d{4})" },
-    { token: "MM", pattern: "(\\d{2})" },
-    { token: "dd", pattern: "(\\d{2})" },
-    { token: "HH", pattern: "(\\d{2})" },
-    { token: "mm", pattern: "(\\d{2})" },
-    { token: "ss", pattern: "(\\d{2})" },
-  ];
-
-  // Find all tokens and their positions in the format string
-  const foundTokens: { token: string; pattern: string; position: number }[] = [];
-  for (const { token, pattern } of tokens) {
-    const pos = format.indexOf(token);
-    if (pos !== -1) {
-      foundTokens.push({ token, pattern, position: pos });
-    }
-  }
-
-  // Sort by position in format string (left to right)
-  foundTokens.sort((a, b) => a.position - b.position);
-
-  // Build regex by replacing tokens in order of appearance
-  let regex = format.replace(/[.*+?^$|[\]\\]/g, "\\$&");
-  const formatParts: { token: string; index: number }[] = [];
-
-  for (let i = 0; i < foundTokens.length; i++) {
-    const { token, pattern } = foundTokens[i];
-    regex = regex.replace(token, pattern);
-    formatParts.push({ token, index: i + 1 });
-  }
-
-  const match = value.match(new RegExp("^" + regex + "$"));
-  if (!match) return null;
-
-  let year = 1970, month = 0, day = 1, hours = 0, minutes = 0, seconds = 0;
-
-  for (const { token, index } of formatParts) {
-    const val = parseInt(match[index], 10);
-    switch (token) {
-      case "yyyy": year = val; break;
-      case "MM": month = val - 1; break;
-      case "dd": day = val; break;
-      case "HH": hours = val; break;
-      case "mm": minutes = val; break;
-      case "ss": seconds = val; break;
-    }
-  }
-
-  const date = new Date(year, month, day, hours, minutes, seconds);
-  if (isNaN(date.getTime())) return null;
-
-  // Validate the date components match (catch invalid dates like Feb 30)
-  if (date.getFullYear() !== year || date.getMonth() !== month || date.getDate() !== day) {
+  try {
+    return parseDate(value, format);
+  } catch {
     return null;
   }
-
-  return date;
-}
-
-function formatDate(date: Date, format: string): string {
-  const pad = (n: number) => n.toString().padStart(2, "0");
-  return format
-    .replace("yyyy", date.getFullYear().toString())
-    .replace("MM", pad(date.getMonth() + 1))
-    .replace("dd", pad(date.getDate()))
-    .replace("HH", pad(date.getHours()))
-    .replace("mm", pad(date.getMinutes()))
-    .replace("ss", pad(date.getSeconds()));
 }
 
 function transformDate(value: string, sourceFormat: string, targetFormat: string): string {
-  const date = parseDate(value, sourceFormat);
+  const date = tryParseDate(value, sourceFormat);
   if (!date) return "";
   return formatDate(date, targetFormat);
 }
@@ -194,9 +131,9 @@ function transformDate(value: string, sourceFormat: string, targetFormat: string
 function parseDateAutoDetect(value: string): Date | null {
   if (!value) return null;
 
-  // Try each EU format until one works (no native Date fallback to avoid US locale)
+  // Try each EU format until one works
   for (const format of DATE_FORMATS) {
-    const date = parseDate(value, format);
+    const date = tryParseDate(value, format);
     if (date) return date;
   }
 
