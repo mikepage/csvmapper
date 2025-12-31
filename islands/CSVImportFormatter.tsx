@@ -169,7 +169,8 @@ export default function CSVImportFormatter() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "mapped_output.csv";
+    const filename = schemaName.value?.trim() || "csv-import-formatter";
+    a.download = `${filename}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
