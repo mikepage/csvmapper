@@ -53,7 +53,7 @@ export default function ImportExportSchema({
 
   const getCollection = (): MappingCollection => {
     return {
-      $schema: "schemas/mapping.schema.json#/$defs/MappingCollection",
+      $schema: "https://csvmapper.mikepage.deno.net/schemas/mapping.schema.json#/$defs/MappingCollection",
       schemas: [
         {
           name: schemaName.value,
@@ -379,7 +379,7 @@ export default function ImportExportSchema({
         <details class="text-xs text-gray-500">
           <summary class="cursor-pointer hover:text-gray-700">Schema Reference</summary>
           <pre class="mt-2 p-3 bg-gray-100 rounded-lg overflow-x-auto text-xs">{`{
-  "$schema": "schemas/mapping.schema.json#/$defs/MappingCollection",
+  "$schema": "https://csvmapper.mikepage.deno.net/schemas/mapping.schema.json#/$defs/MappingCollection",
   "schemas": [
     {
       "name": "My Schema",
