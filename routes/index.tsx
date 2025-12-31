@@ -2,7 +2,7 @@ import { Head } from "fresh/runtime";
 import { define } from "../utils.ts";
 import CSVImportFormatter from "../islands/CSVImportFormatter.tsx";
 
-export default define.page(function CSVMapperPage() {
+export default define.page(function CSVImportFormatterPage() {
   return (
     <div class="min-h-screen bg-gray-100">
       <Head>

@@ -43,7 +43,7 @@ export default function ExportSchema({
 
   const getCollection = (): MappingCollection => {
     return {
-      $schema: "https://csvmapper.mikepage.deno.net/schemas/mapping.schema.json#/$defs/MappingCollection",
+      $schema: "https://csv-import-formatter.mikepage.deno.net/schemas/mapping.schema.json#/$defs/MappingCollection",
       schemas: [
         {
           name: schemaName.value,

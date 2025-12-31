@@ -310,7 +310,7 @@ export default function ImportSchema({
             </button>
           </div>
           <button
-            onClick={() => handleImportFromUrl("https://csvmapper-schemas.mikepage.deno.net/examples.json")}
+            onClick={() => handleImportFromUrl("https://csv-import-formatter-schemas.mikepage.deno.net/examples.json")}
             class="text-xs text-blue-600 hover:text-blue-800 hover:underline"
           >
             Load examples collection
@@ -343,7 +343,7 @@ export default function ImportSchema({
         <details class="text-xs text-gray-500">
           <summary class="cursor-pointer hover:text-gray-700">Schema Reference</summary>
           <pre class="mt-2 p-3 bg-gray-100 rounded-lg overflow-x-auto text-xs">{`{
-  "$schema": "https://csvmapper.mikepage.deno.net/schemas/mapping.schema.json#/$defs/MappingCollection",
+  "$schema": "https://csv-import-formatter.mikepage.deno.net/schemas/mapping.schema.json#/$defs/MappingCollection",
   "schemas": [
     {
       "name": "My Schema",

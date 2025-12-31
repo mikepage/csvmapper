@@ -9,7 +9,7 @@ app.use(staticFiles());
 const allowedOrigins = [
   "http://127.0.0.1",
   "http://localhost",
-  "https://csvmapper.mikepage.deno.net",
+  "https://csv-import-formatter.mikepage.deno.net",
 ];
 
 app.use(async (ctx) => {
