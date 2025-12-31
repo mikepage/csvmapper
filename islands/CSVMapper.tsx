@@ -87,12 +87,13 @@ function convertValue(
 
 function generateOutputCSV(
   parsedCSV: ParsedCSV,
-  mappings: ColumnMapping[]
+  mappings: ColumnMapping[],
+  delimiter: Delimiter
 ): string {
   const includedMappings = mappings.filter((m) => m.include);
   if (includedMappings.length === 0) return "";
 
-  const headerLine = includedMappings.map((m) => m.targetColumn).join(",");
+  const headerLine = includedMappings.map((m) => m.targetColumn).join(delimiter);
   const dataLines = parsedCSV.rows.map((row) => {
     return includedMappings
       .map((mapping) => {
@@ -104,12 +105,12 @@ function generateOutputCSV(
           mapping.sourceType,
           mapping.conversions
         );
-        if (converted.includes(",") || converted.includes('"')) {
+        if (converted.includes(delimiter) || converted.includes('"')) {
           return `"${converted.replace(/"/g, '""')}"`;
         }
         return converted;
       })
-      .join(",");
+      .join(delimiter);
   });
 
   return [headerLine, ...dataLines].join("\n");
@@ -122,21 +123,22 @@ export default function CSVMapper() {
   const expandedMapping = useSignal<number | null>(null);
   const encodingInfo = useSignal<string | null>(null);
   const encodingError = useSignal<string | null>(null);
-  const delimiter = useSignal<Delimiter>(",");
+  const inputDelimiter = useSignal<Delimiter>(";");
+  const outputDelimiter = useSignal<Delimiter>(";");
 
   const outputCSV = useComputed(() => {
     if (parsedCSV.value.headers.length === 0) return "";
-    return generateOutputCSV(parsedCSV.value, mappings.value);
+    return generateOutputCSV(parsedCSV.value, mappings.value, outputDelimiter.value);
   });
 
   const handleParseCSV = () => {
     // Auto-detect delimiter if not already detected
     if (inputCSV.value.trim()) {
       const detected = detectDelimiter(inputCSV.value);
-      delimiter.value = detected;
+      inputDelimiter.value = detected;
     }
 
-    const parsed = parseCSV(inputCSV.value, delimiter.value);
+    const parsed = parseCSV(inputCSV.value, inputDelimiter.value);
     parsedCSV.value = parsed;
 
     const newMappings: ColumnMapping[] = parsed.headers.map((header) => {
@@ -157,8 +159,8 @@ export default function CSVMapper() {
     mappings.value = newMappings;
   };
 
-  const handleDelimiterChange = (newDelimiter: Delimiter) => {
-    delimiter.value = newDelimiter;
+  const handleInputDelimiterChange = (newDelimiter: Delimiter) => {
+    inputDelimiter.value = newDelimiter;
     if (inputCSV.value.trim() && parsedCSV.value.headers.length > 0) {
       // Re-parse with new delimiter
       const parsed = parseCSV(inputCSV.value, newDelimiter);
@@ -309,6 +311,33 @@ export default function CSVMapper() {
           placeholder="Or paste CSV data here..."
           rows={6}
         />
+
+        <div class="mt-3 flex items-center gap-4">
+          <div class="flex items-center gap-2">
+            <label class="text-sm text-gray-600">Input delimiter:</label>
+            <select
+              value={inputDelimiter.value}
+              onChange={(e) => handleInputDelimiterChange((e.target as HTMLSelectElement).value as Delimiter)}
+              class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              {DELIMITERS.map((d) => (
+                <option key={d.delimiter} value={d.delimiter}>{d.label}</option>
+              ))}
+            </select>
+          </div>
+          <div class="flex items-center gap-2">
+            <label class="text-sm text-gray-600">Output delimiter:</label>
+            <select
+              value={outputDelimiter.value}
+              onChange={(e) => outputDelimiter.value = (e.target as HTMLSelectElement).value as Delimiter}
+              class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              {DELIMITERS.map((d) => (
+                <option key={d.delimiter} value={d.delimiter}>{d.label}</option>
+              ))}
+            </select>
+          </div>
+        </div>
       </div>
 
       {/* Action Buttons */}
