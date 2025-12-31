@@ -59,7 +59,7 @@ function generateOutputCSV(
   return [headerLine, ...dataLines].join("\n");
 }
 
-export default function CSVMapper() {
+export default function CSVImportFormatter() {
   const inputCSV = useSignal("");
   const parsedCSV = useSignal<ParsedCSV>({ headers: [], rows: [] });
   const mappings = useSignal<ColumnMapping[]>([]);
@@ -277,7 +277,7 @@ export default function CSVMapper() {
               : "bg-blue-600 text-white hover:bg-blue-700"
           }`}
         >
-          Map CSV
+          Format CSV
         </button>
         <button
           onClick={handleClear}

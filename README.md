@@ -1,4 +1,4 @@
-# CSV Mapper
+# CSV Import Formatter
 
 A web-based CSV column mapping and transformation tool built with Deno Fresh.
 
