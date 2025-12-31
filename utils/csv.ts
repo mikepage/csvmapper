@@ -79,7 +79,7 @@ export function getDelimiterLabel(delimiter: Delimiter): string {
 }
 
 /**
- * Stringify CSV data using @std/csv with all fields quoted
+ * Stringify CSV data using @std/csv (quotes fields when needed)
  */
 export function stringifyCSV(
   headers: string[],
@@ -88,48 +88,6 @@ export function stringifyCSV(
 ): string {
   if (headers.length === 0) return "";
 
-  const data = rows.map((row) => {
-    const record: Record<string, string> = {};
-    headers.forEach((header, i) => {
-      record[header] = row[i] ?? "";
-    });
-    return record;
-  });
-
-  // Use stringify from @std/csv, then post-process to ensure all fields are quoted
-  const output = stringify(data, { columns: headers, separator: delimiter });
-
-  // Post-process each line to ensure all fields are quoted
-  const lines = output.split("\n");
-  const quotedLines = lines.map((line) => {
-    if (!line.trim()) return line;
-    // Parse the line respecting existing quotes, then re-quote all fields
-    const fields: string[] = [];
-    let current = "";
-    let inQuotes = false;
-    for (let i = 0; i < line.length; i++) {
-      const char = line[i];
-      if (char === '"') {
-        if (inQuotes && line[i + 1] === '"') {
-          current += '"';
-          i++;
-        } else {
-          inQuotes = !inQuotes;
-        }
-      } else if (char === delimiter && !inQuotes) {
-        fields.push(current);
-        current = "";
-      } else {
-        current += char;
-      }
-    }
-    fields.push(current);
-
-    // Quote all fields, escaping internal quotes
-    return fields
-      .map((field) => `"${field.replace(/"/g, '""')}"`)
-      .join(delimiter);
-  });
-
-  return quotedLines.join("\n");
+  const data = [headers, ...rows];
+  return stringify(data, { separator: delimiter, headers: false }).trimEnd();
 }
