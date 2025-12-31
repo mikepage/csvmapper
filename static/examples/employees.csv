@@ -1,7 +1,0 @@
-id;title;name;department;active;salary;start_date
-1;Mr;John Doe;Engineering;T;4.500,00;15/01/2022
-2;Ms;Jane Smith;Marketing;T;3.800,50;20/03/2021
-3;Mr;Bob Wilson;Engineering;F;5.200,00;10/06/2020
-4;Mrs;Alice Brown;HR;T;3.200,75;05/09/2023
-5;Mr;Charlie Davis;Marketing;T;4.100,25;12/11/2022
-6;Ms;Eva Martinez;Engineering;T;4.800,00;28/02/2021

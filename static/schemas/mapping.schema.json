@@ -95,32 +95,60 @@
       },
       "description": "A collection of schemas identified by 'name' as the label"
     },
+    "MappingConfig": {
+      "type": "object",
+      "required": ["version", "mappings"],
+      "properties": {
+        "version": {
+          "type": "string",
+          "const": "1.0",
+          "description": "Schema version"
+        },
+        "inputDelimiter": {
+          "$ref": "#/$defs/Delimiter",
+          "description": "Delimiter used in the input CSV"
+        },
+        "outputDelimiter": {
+          "$ref": "#/$defs/Delimiter",
+          "description": "Delimiter to use in the output CSV"
+        },
+        "decimalSeparator": {
+          "$ref": "#/$defs/DecimalSeparator",
+          "description": "Decimal separator for parsing numbers"
+        },
+        "mappings": {
+          "$ref": "#/$defs/ColumnMapping",
+          "description": "Column mappings"
+        },
+        "typeTransformations": {
+          "$ref": "#/$defs/TypeTransformationMap",
+          "description": "Data type transformations per column"
+        },
+        "transformations": {
+          "$ref": "#/$defs/TransformationMap",
+          "description": "Value transformations per column"
+        },
+        "valueConversions": {
+          "$ref": "#/$defs/ColumnValueConversions",
+          "description": "Value conversions per column"
+        }
+      },
+      "description": "Mapping configuration object"
+    },
     "Mapping": {
       "type": "object",
-      "required": ["id", "name", "description", "csv", "mapping"],
+      "required": ["name", "config"],
       "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the mapping"
-        },
         "name": {
           "type": "string",
           "description": "Human-readable name/label for the mapping"
         },
-        "description": {
-          "type": "string",
-          "description": "Description of what the mapping does"
-        },
-        "csv": {
-          "type": "string",
-          "description": "Filename of the CSV file"
-        },
-        "mapping": {
-          "type": "string",
-          "description": "Filename of the mapping configuration JSON"
+        "config": {
+          "$ref": "#/$defs/MappingConfig",
+          "description": "The mapping configuration"
         }
       },
-      "description": "A CSV mapping configuration for data conversion between systems"
+      "description": "A named mapping configuration for data conversion between systems"
     },
     "MappingCollection": {
       "allOf": [

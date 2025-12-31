@@ -1,7 +1,0 @@
-sku;product_name;category;price;stock;available;last_updated
-PRD001;Wireless Mouse;Electronics;29.99;150;yes;2024-01-15
-PRD002;USB-C Cable;Electronics;12.50;500;yes;2024-02-20
-PRD003;Desk Lamp;Home Office;45.00;0;no;2024-01-10
-PRD004;Notebook Set;Stationery;8.99;1000;yes;2024-03-05
-PRD005;Monitor Stand;Home Office;89.99;25;yes;2024-02-28
-PRD006;Webcam HD;Electronics;65.00;75;yes;2024-03-10

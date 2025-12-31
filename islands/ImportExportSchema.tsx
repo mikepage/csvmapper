@@ -354,7 +354,7 @@ export default function ImportExportSchema({
         {/* Import from URL */}
         <div>
           <h4 class="text-xs font-medium text-gray-600 uppercase mb-2">Import from URL</h4>
-          <div class="flex gap-2">
+          <div class="flex gap-2 mb-2">
             <input
               type="url"
               id="import-json-url"
@@ -373,6 +373,12 @@ export default function ImportExportSchema({
               Fetch & Import
             </button>
           </div>
+          <button
+            onClick={() => handleImportFromUrl("https://csvmapper-schemas.mikepage.deno.net/examples/index.json")}
+            class="text-xs text-blue-600 hover:text-blue-800 hover:underline"
+          >
+            Load examples collection
+          </button>
         </div>
 
         {/* Schema Reference */}

@@ -14,7 +14,6 @@ import {
 import { applyTransformation, transformValue } from "../utils/transformation.ts";
 import ImportExportSchema from "./ImportExportSchema.tsx";
 import ColumnMappingIsland from "./ColumnMapping.tsx";
-import Examples from "./Examples.tsx";
 
 const DECIMAL_SEPARATORS: { separator: DecimalSeparator; label: string }[] = [
   { separator: ".", label: "Period (1,234.56)" },
@@ -285,14 +284,15 @@ export default function CSVMapper() {
         </button>
       </div>
 
-      {/* Examples */}
-      <Examples
-        inputCSV={inputCSV}
-        parsedCSV={parsedCSV}
+      {/* Import/Export Schema - always visible */}
+      <ImportExportSchema
         mappings={mappings}
+        parsedCSV={parsedCSV}
         inputDelimiter={inputDelimiter}
-        encodingInfo={encodingInfo}
+        outputDelimiter={outputDelimiter}
+        decimalSeparator={decimalSeparator}
         importError={importError}
+        importSuccess={importSuccess}
       />
 
       {/* Mapping Configuration */}
@@ -314,17 +314,6 @@ export default function CSVMapper() {
               </div>
             </div>
           </div>
-
-          {/* Import/Export Schema - expanded by default */}
-          <ImportExportSchema
-            mappings={mappings}
-            parsedCSV={parsedCSV}
-            inputDelimiter={inputDelimiter}
-            outputDelimiter={outputDelimiter}
-            decimalSeparator={decimalSeparator}
-            importError={importError}
-            importSuccess={importSuccess}
-          />
 
           {/* Column Mapping - collapsed by default */}
           <ColumnMappingIsland
