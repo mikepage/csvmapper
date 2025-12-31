@@ -25,7 +25,7 @@
     },
     "Transformation": {
       "type": "string",
-      "pattern": "^(uppercase|lowercase|trim|dateFormat:.+|date(:[^:]+)?(:[^:]+)?)$",
+      "pattern": "^(uppercase|lowercase|trim|date(:[^:]+)?(:[^:]+)?)$",
       "description": "Value transformations: uppercase, lowercase, trim, date (auto-detect input, output yyyy-MM-dd), date:targetFormat (auto-detect input), date:sourceFormat:targetFormat. Tokens: yyyy, MM, dd, HH, mm, ss. Invalid dates output empty.",
       "examples": ["uppercase", "lowercase", "trim", "date", "date:dd/MM/yyyy", "date:dd/MM/yyyy:yyyy-MM-dd"]
     },
@@ -199,37 +199,5 @@
       "$ref": "#/$defs/ColumnValueConversions",
       "description": "Value conversions per column. Maps specific input values to output values."
     }
-  },
-  "examples": [
-    {
-      "version": "1.0",
-      "inputDelimiter": ";",
-      "outputDelimiter": ";",
-      "decimalSeparator": ",",
-      "mappings": {
-        "id": "ID",
-        "title": "gender",
-        "name": "fullName",
-        "active": "isActive",
-        "score": "totalScore",
-        "created": "createdDate"
-      },
-      "typeTransformations": {
-        "id": "integer",
-        "active": "boolean",
-        "score": "number"
-      },
-      "transformations": {
-        "name": "uppercase",
-        "created": "date"
-      },
-      "valueConversions": {
-        "title": {
-          "Mr": "male",
-          "Ms": "female",
-          "Mrs": "female"
-        }
-      }
-    }
-  ]
+  }
 }
