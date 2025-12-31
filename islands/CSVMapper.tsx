@@ -293,7 +293,6 @@ export default function CSVMapper() {
         inputDelimiter={inputDelimiter}
         encodingInfo={encodingInfo}
         importError={importError}
-        importSuccess={importSuccess}
       />
 
       {/* Mapping Configuration */}

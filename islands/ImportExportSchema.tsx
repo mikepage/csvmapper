@@ -1,4 +1,4 @@
-import { type Signal } from "@preact/signals";
+import { useSignal, type Signal } from "@preact/signals";
 import {
   exportMappingConfig,
   serializeMappingConfig,
@@ -10,6 +10,16 @@ import {
   type MappingConfigTransformation,
 } from "../utils/mapping.ts";
 import { type Delimiter, type ParsedCSV } from "../utils/csv.ts";
+
+interface SchemaItem {
+  name: string;
+  config: MappingConfig;
+}
+
+interface MappingCollection {
+  $schema: string;
+  schemas: SchemaItem[];
+}
 
 interface ImportExportSchemaProps {
   mappings: Signal<ColumnMapping[]>;
@@ -30,6 +40,8 @@ export default function ImportExportSchema({
   importError,
   importSuccess,
 }: ImportExportSchemaProps) {
+  const schemaName = useSignal("Untitled");
+
   const getMappingConfig = (): MappingConfig => {
     return exportMappingConfig({
       mappings: mappings.value,
@@ -39,9 +51,21 @@ export default function ImportExportSchema({
     });
   };
 
+  const getCollection = (): MappingCollection => {
+    return {
+      $schema: "schemas/mapping.schema.json#/$defs/MappingCollection",
+      schemas: [
+        {
+          name: schemaName.value,
+          config: getMappingConfig(),
+        },
+      ],
+    };
+  };
+
   const getFormattedJson = (): string => {
-    const config = getMappingConfig();
-    return serializeMappingConfig(config);
+    const collection = getCollection();
+    return JSON.stringify(collection, null, 2);
   };
 
   const downloadMappingJson = () => {
@@ -50,7 +74,7 @@ export default function ImportExportSchema({
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "mapping.json";
+    a.download = "mapping-collection.json";
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -60,28 +84,8 @@ export default function ImportExportSchema({
     navigator.clipboard.writeText(json);
   };
 
-  const validateAndApplyMapping = (config: unknown): boolean => {
-    importError.value = null;
-    importSuccess.value = null;
-
-    if (!config || typeof config !== "object") {
-      importError.value = "Invalid JSON: expected an object";
-      return false;
-    }
-
-    const obj = config as Record<string, unknown>;
-
-    if (obj.version !== "1.0") {
-      importError.value = `Unsupported version: ${obj.version}. Expected "1.0"`;
-      return false;
-    }
-
-    if (!obj.mappings || typeof obj.mappings !== "object" || Array.isArray(obj.mappings)) {
-      importError.value = "Invalid mapping: 'mappings' must be an object";
-      return false;
-    }
-
-    const mappingsObj = obj.mappings as Record<string, unknown>;
+  const applySchemaConfig = (config: MappingConfig): boolean => {
+    const mappingsObj = config.mappings as Record<string, string>;
     const validTypes = ["string", "integer", "number", "boolean"];
     const validDelimiters = [",", ";", "\t"];
 
@@ -92,14 +96,8 @@ export default function ImportExportSchema({
       }
     }
 
-    if (obj.typeTransformations !== undefined) {
-      if (typeof obj.typeTransformations !== "object" || Array.isArray(obj.typeTransformations)) {
-        importError.value = "Invalid 'typeTransformations': must be an object";
-        return false;
-      }
-
-      const typeTransformationsObj = obj.typeTransformations as Record<string, unknown>;
-      for (const [source, transType] of Object.entries(typeTransformationsObj)) {
+    if (config.typeTransformations !== undefined) {
+      for (const [source, transType] of Object.entries(config.typeTransformations)) {
         if (typeof transType !== "string" || !validTypes.includes(transType)) {
           importError.value = `Type transformation '${source}': must be one of: ${validTypes.join(", ")}`;
           return false;
@@ -108,14 +106,8 @@ export default function ImportExportSchema({
     }
 
     const validTransformations = ["uppercase", "lowercase", "trim", "date"];
-    if (obj.transformations !== undefined) {
-      if (typeof obj.transformations !== "object" || Array.isArray(obj.transformations)) {
-        importError.value = "Invalid 'transformations': must be an object";
-        return false;
-      }
-
-      const transformationsObj = obj.transformations as Record<string, unknown>;
-      for (const [source, trans] of Object.entries(transformationsObj)) {
+    if (config.transformations !== undefined) {
+      for (const [source, trans] of Object.entries(config.transformations)) {
         if (typeof trans !== "string") {
           importError.value = `Transformation '${source}': must be a string`;
           return false;
@@ -130,18 +122,18 @@ export default function ImportExportSchema({
       }
     }
 
-    if (obj.inputDelimiter !== undefined && !validDelimiters.includes(obj.inputDelimiter as string)) {
+    if (config.inputDelimiter !== undefined && !validDelimiters.includes(config.inputDelimiter)) {
       importError.value = `Invalid 'inputDelimiter': must be one of: comma, semicolon, tab`;
       return false;
     }
 
-    if (obj.outputDelimiter !== undefined && !validDelimiters.includes(obj.outputDelimiter as string)) {
+    if (config.outputDelimiter !== undefined && !validDelimiters.includes(config.outputDelimiter)) {
       importError.value = `Invalid 'outputDelimiter': must be one of: comma, semicolon, tab`;
       return false;
     }
 
     const validDecimalSeparators = [".", ","];
-    if (obj.decimalSeparator !== undefined && !validDecimalSeparators.includes(obj.decimalSeparator as string)) {
+    if (config.decimalSeparator !== undefined && !validDecimalSeparators.includes(config.decimalSeparator)) {
       importError.value = `Invalid 'decimalSeparator': must be one of: . (period), , (comma)`;
       return false;
     }
@@ -164,23 +156,23 @@ export default function ImportExportSchema({
       return false;
     }
 
-    if (obj.inputDelimiter) {
-      inputDelimiter.value = obj.inputDelimiter as Delimiter;
+    if (config.inputDelimiter) {
+      inputDelimiter.value = config.inputDelimiter as Delimiter;
     }
-    if (obj.outputDelimiter) {
-      outputDelimiter.value = obj.outputDelimiter as Delimiter;
+    if (config.outputDelimiter) {
+      outputDelimiter.value = config.outputDelimiter as Delimiter;
     }
-    if (obj.decimalSeparator) {
-      decimalSeparator.value = obj.decimalSeparator as DecimalSeparator;
+    if (config.decimalSeparator) {
+      decimalSeparator.value = config.decimalSeparator as DecimalSeparator;
     }
 
-    const typeTransformationsObj = (obj.typeTransformations || {}) as Record<string, MappingConfigTypeTransformation>;
-    const transformationsObj = (obj.transformations || {}) as Record<string, MappingConfigTransformation>;
-    const valueConversionsObj = (obj.valueConversions || {}) as Record<string, Record<string, string>>;
+    const typeTransformationsObj = (config.typeTransformations || {}) as Record<string, MappingConfigTypeTransformation>;
+    const transformationsObj = (config.transformations || {}) as Record<string, MappingConfigTransformation>;
+    const valueConversionsObj = (config.valueConversions || {}) as Record<string, Record<string, string>>;
 
     const newMappings: ColumnMapping[] = parsedCSV.value.headers.map((header) => {
       const isIncluded = header in mappingsObj;
-      const targetColumn = isIncluded ? (mappingsObj[header] as string) : header;
+      const targetColumn = isIncluded ? mappingsObj[header] : header;
       const transformationType = typeTransformationsObj[header];
       const transformation = transformationsObj[header];
       const valueConvMap = valueConversionsObj[header] || {};
@@ -200,14 +192,67 @@ export default function ImportExportSchema({
     });
 
     mappings.value = newMappings;
-    importSuccess.value = `Imported ${Object.keys(mappingsObj).length} mapping(s)`;
     return true;
+  };
+
+  const validateAndApplyCollection = (data: unknown): boolean => {
+    importError.value = null;
+    importSuccess.value = null;
+
+    if (!data || typeof data !== "object") {
+      importError.value = "Invalid JSON: expected an object";
+      return false;
+    }
+
+    const obj = data as Record<string, unknown>;
+
+    // Check if it's a collection format
+    if (!obj.schemas || !Array.isArray(obj.schemas)) {
+      importError.value = "Invalid format: expected a collection with 'schemas' array";
+      return false;
+    }
+
+    const schemas = obj.schemas as Array<Record<string, unknown>>;
+    if (schemas.length === 0) {
+      importError.value = "Collection contains no schemas";
+      return false;
+    }
+
+    // For now, apply the first schema
+    const firstSchema = schemas[0];
+    if (!firstSchema.name || typeof firstSchema.name !== "string") {
+      importError.value = "Schema must have a 'name' property";
+      return false;
+    }
+
+    const config = firstSchema.config as MappingConfig | undefined;
+    if (!config) {
+      importError.value = "Schema must have a 'config' property";
+      return false;
+    }
+
+    if (config.version !== "1.0") {
+      importError.value = `Unsupported version: ${config.version}. Expected "1.0"`;
+      return false;
+    }
+
+    if (!config.mappings || typeof config.mappings !== "object" || Array.isArray(config.mappings)) {
+      importError.value = "Invalid mapping: 'mappings' must be an object";
+      return false;
+    }
+
+    if (applySchemaConfig(config)) {
+      schemaName.value = firstSchema.name;
+      importSuccess.value = `Imported schema: ${firstSchema.name}`;
+      return true;
+    }
+    return false;
   };
 
   const handleImportFromText = (text: string) => {
     try {
-      const config = JSON.parse(text);
-      return validateAndApplyMapping(config);
+      const data = JSON.parse(text);
+      return validateAndApplyCollection(data);
     } catch {
       importError.value = "Invalid JSON syntax";
       return false;
@@ -228,8 +273,8 @@ export default function ImportExportSchema({
         importError.value = `Failed to fetch: ${response.status} ${response.statusText}`;
         return false;
       }
-      const config = await response.json();
-      return validateAndApplyMapping(config);
+      const data = await response.json();
+      return validateAndApplyCollection(data);
     } catch (err) {
       importError.value = `Failed to fetch URL: ${err instanceof Error ? err.message : "Unknown error"}`;
       return false;
@@ -256,6 +301,15 @@ export default function ImportExportSchema({
         {/* Export Section with JSON Output */}
         <div>
           <h4 class="text-xs font-medium text-gray-600 uppercase mb-2">Export</h4>
+          <div class="flex items-center gap-2 mb-3">
+            <label class="text-sm text-gray-600">Schema name:</label>
+            <input
+              type="text"
+              value={schemaName.value}
+              onInput={(e) => schemaName.value = (e.target as HTMLInputElement).value}
+              class="px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
           <div class="flex gap-2 mb-3">
             <button
               onClick={downloadMappingJson}
@@ -281,7 +335,7 @@ export default function ImportExportSchema({
           <textarea
             id="import-json-text"
             class="w-full p-2 border border-gray-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            placeholder='{"version": "1.0", "mappings": {...}}'
+            placeholder='{"$schema": "...", "schemas": [...]}'
             rows={3}
           />
           <button
@@ -305,7 +359,7 @@ export default function ImportExportSchema({
               type="url"
               id="import-json-url"
               class="flex-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              placeholder="https://example.com/mapping.json"
+              placeholder="https://example.com/mapping-collection.json"
             />
             <button
               onClick={async () => {
@@ -323,33 +377,33 @@ export default function ImportExportSchema({
 
         {/* Schema Reference */}
         <details class="text-xs text-gray-500">
-          <summary class="cursor-pointer hover:text-gray-700">Schema Reference (JSON Schema types)</summary>
+          <summary class="cursor-pointer hover:text-gray-700">Schema Reference</summary>
           <pre class="mt-2 p-3 bg-gray-100 rounded-lg overflow-x-auto text-xs">{`{
-  "version": "1.0",
-  "inputDelimiter": "," | ";" | "\\t",
-  "outputDelimiter": "," | ";" | "\\t",
-  "decimalSeparator": "." | ",",
-  "mappings": {
-    "sourceColumn": "targetColumn"
-  },
-  "typeTransformations": {
-    "column": "string | integer | number | boolean"
-  },
-  "transformations": {
-    "column": "uppercase | lowercase | trim | date | date:targetFormat | date:sourceFormat:targetFormat"
-  },
-  "valueConversions": {
-    "column": { "Mr": "male", "Ms": "female" }
-  }
-}
-
-boolean outputs as 1/0 in CSV
-number/integer: thousand separators removed, decimal separator configurable
-valueConversions: map specific values to other values (case-insensitive)
-date: auto-detects input format (yyyy-MM-dd, dd/MM/yyyy, dd-MM-yyyy, dd.MM.yyyy, yyyy/MM/dd)
-date tokens: yyyy, MM, dd, HH, mm, ss
-date examples: date (auto -> yyyy-MM-dd), date:dd/MM/yyyy (auto -> custom)
-invalid dates output empty string`}</pre>
+  "$schema": "schemas/mapping.schema.json#/$defs/MappingCollection",
+  "schemas": [
+    {
+      "name": "My Schema",
+      "config": {
+        "version": "1.0",
+        "inputDelimiter": "," | ";" | "\\t",
+        "outputDelimiter": "," | ";" | "\\t",
+        "decimalSeparator": "." | ",",
+        "mappings": {
+          "sourceColumn": "targetColumn"
+        },
+        "typeTransformations": {
+          "column": "string | integer | number | boolean"
+        },
+        "transformations": {
+          "column": "uppercase | lowercase | trim | date"
+        },
+        "valueConversions": {
+          "column": { "Mr": "male", "Ms": "female" }
+        }
+      }
+    }
+  ]
+}`}</pre>
         </details>
       </div>
     </details>

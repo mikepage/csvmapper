@@ -1,6 +1,6 @@
 import { useSignal, useSignalEffect, type Signal } from "@preact/signals";
 import { detectDelimiter, parseCSV, type Delimiter, type ParsedCSV } from "../utils/csv.ts";
-import { type ColumnMapping, type DataType, type DecimalSeparator, type MappingConfigTypeTransformation, type MappingConfigTransformation } from "../utils/mapping.ts";
+import { type ColumnMapping, type DataType, type MappingConfigTypeTransformation, type MappingConfigTransformation } from "../utils/mapping.ts";
 
 interface Example {
   id: string;
@@ -17,7 +17,6 @@ interface ExamplesProps {
   inputDelimiter: Signal<Delimiter>;
   encodingInfo: Signal<string | null>;
   importError: Signal<string | null>;
-  importSuccess: Signal<string | null>;
 }
 
 export default function Examples({
@@ -27,7 +26,6 @@ export default function Examples({
   inputDelimiter,
   encodingInfo,
   importError,
-  importSuccess,
 }: ExamplesProps) {
   const examples = useSignal<Example[]>([]);
   const selectedExample = useSignal<string>("");
@@ -45,7 +43,6 @@ export default function Examples({
   const loadExample = async (example: Example) => {
     loading.value = true;
     importError.value = null;
-    importSuccess.value = null;
 
     try {
       // Load CSV
@@ -109,7 +106,6 @@ export default function Examples({
       mappings.value = newMappings;
       selectedExample.value = example.id;
       encodingInfo.value = "UTF-8";
-      importSuccess.value = `Loaded example: ${example.name}`;
     } catch (err) {
       importError.value = `Failed to load example: ${err instanceof Error ? err.message : "Unknown error"}`;
     } finally {
