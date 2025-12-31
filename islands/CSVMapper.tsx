@@ -1,5 +1,6 @@
 import { useSignal, useComputed } from "@preact/signals";
 import { detectAndDecodeText } from "../utils/encoding.ts";
+import { detectDelimiter, DELIMITERS, type Delimiter } from "../utils/csv.ts";
 
 type DataType = "string" | "integer" | "decimal" | "date" | "boolean" | "char";
 
@@ -28,17 +29,17 @@ const SAMPLE_CSV = `id,name,active,score,created,grade
 4,Alice Brown,F,88.7,2024-04-05,A
 5,Charlie Davis,T,95.2,2024-05-12,B`;
 
-function parseCSV(text: string): ParsedCSV {
+function parseCSV(text: string, delimiter: Delimiter): ParsedCSV {
   const lines = text.trim().split("\n");
   if (lines.length === 0) return { headers: [], rows: [] };
 
-  const headers = parseCSVLine(lines[0]);
-  const rows = lines.slice(1).map(parseCSVLine);
+  const headers = parseCSVLine(lines[0], delimiter);
+  const rows = lines.slice(1).map((line) => parseCSVLine(line, delimiter));
 
   return { headers, rows };
 }
 
-function parseCSVLine(line: string): string[] {
+function parseCSVLine(line: string, delimiter: Delimiter): string[] {
   const result: string[] = [];
   let current = "";
   let inQuotes = false;
@@ -52,7 +53,7 @@ function parseCSVLine(line: string): string[] {
       } else {
         inQuotes = !inQuotes;
       }
-    } else if (char === "," && !inQuotes) {
+    } else if (char === delimiter && !inQuotes) {
       result.push(current.trim());
       current = "";
     } else {
@@ -155,6 +156,7 @@ export default function CSVMapper() {
   const expandedMapping = useSignal<number | null>(null);
   const encodingInfo = useSignal<string | null>(null);
   const encodingError = useSignal<string | null>(null);
+  const delimiter = useSignal<Delimiter>(",");
 
   const outputCSV = useComputed(() => {
     if (parsedCSV.value.headers.length === 0) return "";
@@ -162,7 +164,13 @@ export default function CSVMapper() {
   });
 
   const handleParseCSV = () => {
-    const parsed = parseCSV(inputCSV.value);
+    // Auto-detect delimiter if not already detected
+    if (inputCSV.value.trim()) {
+      const detected = detectDelimiter(inputCSV.value);
+      delimiter.value = detected;
+    }
+
+    const parsed = parseCSV(inputCSV.value, delimiter.value);
     parsedCSV.value = parsed;
 
     const newMappings: ColumnMapping[] = parsed.headers.map((header) => {
@@ -181,6 +189,32 @@ export default function CSVMapper() {
     });
 
     mappings.value = newMappings;
+  };
+
+  const handleDelimiterChange = (newDelimiter: Delimiter) => {
+    delimiter.value = newDelimiter;
+    if (inputCSV.value.trim() && parsedCSV.value.headers.length > 0) {
+      // Re-parse with new delimiter
+      const parsed = parseCSV(inputCSV.value, newDelimiter);
+      parsedCSV.value = parsed;
+
+      const newMappings: ColumnMapping[] = parsed.headers.map((header) => {
+        const columnValues = parsed.rows.map(
+          (row) => row[parsed.headers.indexOf(header)] || ""
+        );
+        const detectedType = inferType(columnValues);
+
+        return {
+          sourceColumn: header,
+          sourceType: detectedType,
+          targetColumn: header,
+          conversions: [],
+          include: true,
+        };
+      });
+
+      mappings.value = newMappings;
+    }
   };
 
   const handleLoadSample = () => {
