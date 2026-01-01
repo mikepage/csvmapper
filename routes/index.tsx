@@ -4,14 +4,16 @@ import CSVImportFormatter from "../islands/CSVImportFormatter.tsx";
 
 export default define.page(function CSVImportFormatterPage() {
   return (
-    <div class="min-h-screen bg-gray-100">
+    <div class="min-h-screen bg-[#fafafa]">
       <Head>
-        <title>CSV Import Formatter - Transform & Convert CSV Data</title>
+        <title>CSV Import Formatter</title>
       </Head>
-      <div class="px-4 py-8">
+      <div class="px-6 md:px-12 py-8">
         <div class="max-w-4xl mx-auto">
-          <h1 class="text-3xl font-bold text-gray-800 mb-2">CSV Import Formatter</h1>
-          <p class="text-gray-600 mb-6">
+          <h1 class="text-2xl font-normal text-[#111] tracking-tight mb-2">
+            CSV Import Formatter
+          </h1>
+          <p class="text-[#666] text-sm mb-8">
             Transform CSV columns with type conversions and value mapping.
           </p>
           <CSVImportFormatter />
